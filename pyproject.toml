@@ -1,0 +1,26 @@
+[project]
+name = "emergence-analysis"
+version = "0.1.0"
+description = "Analysis and launch helpers for OLMo eval experiments"
+requires-python = ">=3.12"
+dependencies = [
+    "ipykernel>=7.2.0",
+    "ipywidgets>=8.1.8",
+    "jupyter>=1.1.1",
+    "jupyterlab>=4.5.8",
+    "matplotlib>=3.10.8",
+    "notebook>=7.5.7",
+    "olmo-eval-internal[beaker]",
+    "pandas>=2.3.3",
+    "seaborn>=0.13.2",
+    "tqdm>=4.67.1",
+]
+
+[tool.uv.sources]
+olmo-eval-internal = { git = "ssh://git@github.com/jopetty/olmo-eval-internal.git", rev = "a76875644b002be012fd4c3d1c8ddbbd42bf21b0" }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.16",
+    "ty>=0.0.48",
+]
