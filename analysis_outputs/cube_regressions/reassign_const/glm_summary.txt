@@ -1,0 +1,22 @@
+                 Generalized Linear Model Regression Results                  
+==============================================================================
+Dep. Variable:                  score   No. Observations:                  564
+Model:                            GLM   Df Residuals:                    11993
+Model Family:                Binomial   Df Model:                            6
+Link Function:                  Logit   Scale:                          1.0000
+Method:                          IRLS   Log-Likelihood:                -5488.8
+Date:                Mon, 15 Jun 2026   Deviance:                       682.63
+Time:                        11:39:00   Pearson chi2:                     661.
+No. Iterations:                     4   Pseudo R-squ. (CS):             0.4097
+Covariance Type:                  HC3                                         
+===================================================================================================================
+                                                      coef    std err          z      P>|z|      [0.025      0.975]
+-------------------------------------------------------------------------------------------------------------------
+Intercept                                           0.1817      0.009     20.756      0.000       0.165       0.199
+C(architecture)[T.GDN± 1B]                         -0.3976      0.012    -31.857      0.000      -0.422      -0.373
+C(architecture)[T.hybrid 1B]                       -0.1430      0.012    -11.581      0.000      -0.167      -0.119
+C(architecture)[T.transformer 1B]                   0.0493      0.012      4.077      0.000       0.026       0.073
+num_variables_centered                             -0.1281      0.003    -47.694      0.000      -0.133      -0.123
+num_assignments_centered                           -0.0109      0.000    -35.318      0.000      -0.012      -0.010
+num_variables_centered:num_assignments_centered     0.0008      0.000      4.359      0.000       0.000       0.001
+===================================================================================================================

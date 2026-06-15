@@ -13,6 +13,7 @@ dependencies = [
     "olmo-eval-internal[beaker]",
     "pandas>=2.3.3",
     "seaborn>=0.13.2",
+    "statsmodels>=0.14.6",
     "tqdm>=4.67.1",
 ]
 

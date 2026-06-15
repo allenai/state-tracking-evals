@@ -1,0 +1,42 @@
+{
+  "n_rows": 1704,
+  "n_examples": 48000,
+  "tasks": {
+    "unique": {
+      "formula": "score ~ C(architecture) + num_variables_centered",
+      "glm_cov_type": "HC3",
+      "wls_cov_type": "HC3",
+      "n_rows": 12,
+      "n_examples": 12000,
+      "glm_summary": "unique/glm_summary.txt",
+      "wls_summary": "unique/wls_summary.txt"
+    },
+    "reassign const": {
+      "formula": "score ~ C(architecture) + num_variables_centered * num_assignments_centered",
+      "glm_cov_type": "HC3",
+      "wls_cov_type": "HC3",
+      "n_rows": 564,
+      "n_examples": 12000,
+      "glm_summary": "reassign_const/glm_summary.txt",
+      "wls_summary": "reassign_const/wls_summary.txt"
+    },
+    "reassign var": {
+      "formula": "score ~ C(architecture) + num_variables_centered * num_assignments_centered",
+      "glm_cov_type": "HC3",
+      "wls_cov_type": "HC3",
+      "n_rows": 564,
+      "n_examples": 12000,
+      "glm_summary": "reassign_var/glm_summary.txt",
+      "wls_summary": "reassign_var/wls_summary.txt"
+    },
+    "undefined": {
+      "formula": "score ~ C(architecture) + num_variables_centered * num_assignments_centered",
+      "glm_cov_type": "HC3",
+      "wls_cov_type": "HC3",
+      "n_rows": 564,
+      "n_examples": 12000,
+      "glm_summary": "undefined/glm_summary.txt",
+      "wls_summary": "undefined/wls_summary.txt"
+    }
+  }
+}

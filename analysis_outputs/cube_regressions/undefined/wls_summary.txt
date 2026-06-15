@@ -1,0 +1,30 @@
+                            WLS Regression Results                            
+==============================================================================
+Dep. Variable:                  score   R-squared:                       0.356
+Model:                            WLS   Adj. R-squared:                  0.349
+Method:                 Least Squares   F-statistic:                     58.27
+Date:                Mon, 15 Jun 2026   Prob (F-statistic):           7.01e-56
+Time:                        11:39:00   Log-Likelihood:                 474.94
+No. Observations:                 564   AIC:                            -935.9
+Df Residuals:                     557   BIC:                            -905.5
+Df Model:                           6                                         
+Covariance Type:                  HC3                                         
+===================================================================================================================
+                                                      coef    std err          z      P>|z|      [0.025      0.975]
+-------------------------------------------------------------------------------------------------------------------
+Intercept                                           0.4447      0.009     52.254      0.000       0.428       0.461
+C(architecture)[T.GDN± 1B]                         -0.0577      0.012     -4.756      0.000      -0.081      -0.034
+C(architecture)[T.hybrid 1B]                       -0.0137      0.012     -1.120      0.263      -0.038       0.010
+C(architecture)[T.transformer 1B]                   0.0080      0.012      0.647      0.518      -0.016       0.032
+num_variables_centered                             -0.0314      0.003    -11.331      0.000      -0.037      -0.026
+num_assignments_centered                           -0.0032      0.000    -10.029      0.000      -0.004      -0.003
+num_variables_centered:num_assignments_centered    -0.0009      0.000     -4.322      0.000      -0.001      -0.000
+==============================================================================
+Omnibus:                        3.240   Durbin-Watson:                   1.983
+Prob(Omnibus):                  0.198   Jarque-Bera (JB):                3.134
+Skew:                           0.136   Prob(JB):                        0.209
+Kurtosis:                       2.757   Cond. No.                         97.2
+==============================================================================
+
+Notes:
+[1] Standard Errors are heteroscedasticity robust (HC3)

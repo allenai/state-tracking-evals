@@ -1,0 +1,22 @@
+                 Generalized Linear Model Regression Results                  
+==============================================================================
+Dep. Variable:                  score   No. Observations:                  564
+Model:                            GLM   Df Residuals:                    11993
+Model Family:                Binomial   Df Model:                            6
+Link Function:                  Logit   Scale:                          1.0000
+Method:                          IRLS   Log-Likelihood:                -5387.9
+Date:                Mon, 15 Jun 2026   Deviance:                       539.05
+Time:                        11:39:00   Pearson chi2:                     528.
+No. Iterations:                     4   Pseudo R-squ. (CS):             0.4068
+Covariance Type:                  HC3                                         
+===================================================================================================================
+                                                      coef    std err          z      P>|z|      [0.025      0.975]
+-------------------------------------------------------------------------------------------------------------------
+Intercept                                          -0.2284      0.008    -29.868      0.000      -0.243      -0.213
+C(architecture)[T.GDN± 1B]                         -0.2434      0.011    -22.053      0.000      -0.265      -0.222
+C(architecture)[T.hybrid 1B]                       -0.0568      0.011     -5.133      0.000      -0.079      -0.035
+C(architecture)[T.transformer 1B]                   0.0331      0.011      3.018      0.003       0.012       0.055
+num_variables_centered                             -0.1323      0.003    -52.853      0.000      -0.137      -0.127
+num_assignments_centered                           -0.0136      0.000    -47.267      0.000      -0.014      -0.013
+num_variables_centered:num_assignments_centered    -0.0041      0.000    -21.707      0.000      -0.004      -0.004
+===================================================================================================================
