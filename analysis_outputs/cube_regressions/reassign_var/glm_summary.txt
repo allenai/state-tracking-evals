@@ -1,22 +1,25 @@
                  Generalized Linear Model Regression Results                  
 ==============================================================================
-Dep. Variable:                  score   No. Observations:                  564
-Model:                            GLM   Df Residuals:                    11993
-Model Family:                Binomial   Df Model:                            6
+Dep. Variable:                  score   No. Observations:                  987
+Model:                            GLM   Df Residuals:                    20990
+Model Family:                Binomial   Df Model:                            9
 Link Function:                  Logit   Scale:                          1.0000
-Method:                          IRLS   Log-Likelihood:                -5441.1
-Date:                Mon, 15 Jun 2026   Deviance:                       707.18
-Time:                        11:39:00   Pearson chi2:                     680.
-No. Iterations:                     4   Pseudo R-squ. (CS):             0.4840
+Method:                          IRLS   Log-Likelihood:                -9498.4
+Date:                Fri, 19 Jun 2026   Deviance:                       1262.5
+Time:                        09:19:42   Pearson chi2:                 1.21e+03
+No. Iterations:                     4   Pseudo R-squ. (CS):             0.5247
 Covariance Type:                  HC3                                         
 ===================================================================================================================
                                                       coef    std err          z      P>|z|      [0.025      0.975]
 -------------------------------------------------------------------------------------------------------------------
-Intercept                                          -0.1148      0.008    -13.549      0.000      -0.131      -0.098
-C(architecture)[T.GDN± 1B]                         -0.2637      0.012    -22.397      0.000      -0.287      -0.241
-C(architecture)[T.hybrid 1B]                       -0.0372      0.013     -2.926      0.003      -0.062      -0.012
-C(architecture)[T.transformer 1B]                  -0.0276      0.013     -2.202      0.028      -0.052      -0.003
-num_variables_centered                             -0.1229      0.003    -44.479      0.000      -0.128      -0.118
-num_assignments_centered                           -0.0202      0.000    -59.787      0.000      -0.021      -0.020
-num_variables_centered:num_assignments_centered     0.0015      0.000      6.625      0.000       0.001       0.002
+Intercept                                          -0.1153      0.009    -13.472      0.000      -0.132      -0.099
+C(architecture)[T.GDN± 1B]                         -0.2643      0.012    -22.266      0.000      -0.288      -0.241
+C(architecture)[T.hybrid 1B]                       -0.0373      0.013     -2.945      0.003      -0.062      -0.012
+C(architecture)[T.hybrid 275M]                     -0.1151      0.013     -9.095      0.000      -0.140      -0.090
+C(architecture)[T.hybrid 7B]                        0.1115      0.013      8.637      0.000       0.086       0.137
+C(architecture)[T.transformer 1B]                  -0.0276      0.013     -2.174      0.030      -0.053      -0.003
+C(architecture)[T.transformer 7B]                  -0.3115      0.012    -26.546      0.000      -0.334      -0.288
+num_variables_centered                             -0.1138      0.002    -53.278      0.000      -0.118      -0.110
+num_assignments_centered                           -0.0221      0.000    -84.796      0.000      -0.023      -0.022
+num_variables_centered:num_assignments_centered     0.0013      0.000      7.307      0.000       0.001       0.002
 ===================================================================================================================

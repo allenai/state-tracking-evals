@@ -1,28 +1,40 @@
 | term | cube_task | formula | glm_cov_type | glm_logit_coef | glm_logit_se | glm_p | wls_cov_type | wls_accuracy_coef | wls_accuracy_se | wls_p |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Intercept | unique | score ~ C(architecture) + num_variables_centered | HC3 | 0.946069 | 0.0028623 | 0 | HC3 | 0.710333 | 0.0403549 | 2.37042e-69 |
-| C(architecture)[T.GDN± 1B] | unique | score ~ C(architecture) + num_variables_centered | HC3 | -0.00169645 | 0.00368711 | 0.645443 | HC3 | -0.000333333 | 0.0510089 | 0.994786 |
-| C(architecture)[T.hybrid 1B] | unique | score ~ C(architecture) + num_variables_centered | HC3 | 0.205187 | 0.00421564 | 0 | HC3 | 0.0386667 | 0.0460778 | 0.40138 |
-| C(architecture)[T.transformer 1B] | unique | score ~ C(architecture) + num_variables_centered | HC3 | 1.11477 | 0.00558017 | 0 | HC3 | 0.167667 | 0.0738883 | 0.0232568 |
-| num_variables_centered | unique | score ~ C(architecture) + num_variables_centered | HC3 | -0.296576 | 0.000984101 | 0 | HC3 | -0.0505625 | 0.0150117 | 0.000756605 |
-| Intercept | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.181689 | 0.00875362 | 1.08559e-95 | HC3 | 0.54445 | 0.00991528 | 0 |
-| C(architecture)[T.GDN± 1B] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.397577 | 0.0124801 | 1.05542e-222 | HC3 | -0.0973333 | 0.0140687 | 4.56663e-12 |
-| C(architecture)[T.hybrid 1B] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.14295 | 0.0123437 | 5.15374e-31 | HC3 | -0.035 | 0.0139869 | 0.0123375 |
-| C(architecture)[T.transformer 1B] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.0493413 | 0.0121016 | 4.55702e-05 | HC3 | 0.012 | 0.0136244 | 0.378441 |
-| num_variables_centered | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.128147 | 0.00268684 | 0 | HC3 | -0.0314009 | 0.00301093 | 1.82832e-25 |
-| num_assignments_centered | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0109193 | 0.000309172 | 3.14105e-273 | HC3 | -0.00266459 | 0.000353574 | 4.84019e-14 |
-| num_variables_centered:num_assignments_centered | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.000838097 | 0.000192265 | 1.30619e-05 | HC3 | 0.000191817 | 0.000220426 | 0.384186 |
-| Intercept | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.114764 | 0.00847027 | 8.03194e-42 | HC3 | 0.471837 | 0.00949689 | 0 |
-| C(architecture)[T.GDN± 1B] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.263739 | 0.0117757 | 4.21257e-111 | HC3 | -0.063 | 0.0130941 | 1.49934e-06 |
-| C(architecture)[T.hybrid 1B] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0372345 | 0.0127241 | 0.00343013 | HC3 | -0.009 | 0.0143114 | 0.529435 |
-| C(architecture)[T.transformer 1B] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0275719 | 0.0125231 | 0.0276878 | HC3 | -0.00666667 | 0.014191 | 0.638511 |
-| num_variables_centered | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.122921 | 0.00276356 | 0 | HC3 | -0.0297856 | 0.00307217 | 3.15731e-22 |
-| num_assignments_centered | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0201638 | 0.00033726 | 0 | HC3 | -0.00488223 | 0.000372164 | 2.57952e-39 |
-| num_variables_centered:num_assignments_centered | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.00146144 | 0.000220588 | 3.46818e-11 | HC3 | 0.000401106 | 0.000241111 | 0.0961976 |
-| Intercept | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.228387 | 0.00764661 | 5.17158e-196 | HC3 | 0.444687 | 0.00851017 | 0 |
-| C(architecture)[T.GDN± 1B] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.243358 | 0.0110352 | 8.95792e-108 | HC3 | -0.0576667 | 0.0121259 | 1.97802e-06 |
-| C(architecture)[T.hybrid 1B] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.056849 | 0.0110747 | 2.8484e-07 | HC3 | -0.0136667 | 0.0122049 | 0.262813 |
-| C(architecture)[T.transformer 1B] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.033109 | 0.0109713 | 0.00254643 | HC3 | 0.008 | 0.0123711 | 0.517847 |
-| num_variables_centered | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.13234 | 0.00250392 | 0 | HC3 | -0.031403 | 0.00277152 | 9.25421e-30 |
-| num_assignments_centered | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0136373 | 0.000288517 | 0 | HC3 | -0.00321013 | 0.000320096 | 1.14074e-23 |
-| num_variables_centered:num_assignments_centered | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.004084 | 0.000188144 | 1.77288e-104 | HC3 | -0.000894991 | 0.000207076 | 1.54585e-05 |
+| Intercept | unique | score ~ C(architecture) + num_variables_centered | HC3 | 0.941886 | 0.00307865 | 0 | HC3 | 0.710333 | 0.0568504 | 7.97056e-36 |
+| C(architecture)[T.GDN± 1B] | unique | score ~ C(architecture) + num_variables_centered | HC3 | -0.00168994 | 0.00395293 | 0.669003 | HC3 | -0.000333333 | 0.0739472 | 0.996403 |
+| C(architecture)[T.hybrid 1B] | unique | score ~ C(architecture) + num_variables_centered | HC3 | 0.204437 | 0.00427502 | 0 | HC3 | 0.0386667 | 0.0629066 | 0.538774 |
+| C(architecture)[T.hybrid 275M] | unique | score ~ C(architecture) + num_variables_centered | HC3 | -0.219391 | 0.00365085 | 0 | HC3 | -0.045 | 0.0821889 | 0.584022 |
+| C(architecture)[T.hybrid 7B] | unique | score ~ C(architecture) + num_variables_centered | HC3 | 4.11602 | 0.0108801 | 0 | HC3 | 0.282667 | 0.0829674 | 0.000656905 |
+| C(architecture)[T.transformer 1B] | unique | score ~ C(architecture) + num_variables_centered | HC3 | 1.11159 | 0.00542286 | 0 | HC3 | 0.167667 | 0.0673736 | 0.0128243 |
+| C(architecture)[T.transformer 7B] | unique | score ~ C(architecture) + num_variables_centered | HC3 | 2.86322 | 0.0262912 | 0 | HC3 | 0.265667 | 0.0991034 | 0.00734682 |
+| num_variables_centered | unique | score ~ C(architecture) + num_variables_centered | HC3 | -0.283584 | 0.00103796 | 0 | HC3 | -0.0376429 | 0.0154065 | 0.0145532 |
+| Intercept | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.180995 | 0.00918851 | 2.24376e-86 | HC3 | 0.543975 | 0.0103144 | 0 |
+| C(architecture)[T.GDN± 1B] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.401294 | 0.0131832 | 1.62888e-203 | HC3 | -0.0973333 | 0.014738 | 3.99503e-11 |
+| C(architecture)[T.hybrid 1B] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.144296 | 0.0125944 | 2.16401e-30 | HC3 | -0.035 | 0.0141154 | 0.0131547 |
+| C(architecture)[T.hybrid 275M] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.295106 | 0.0124928 | 2.28418e-123 | HC3 | -0.0716667 | 0.0141878 | 4.3885e-07 |
+| C(architecture)[T.hybrid 7B] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0399682 | 0.0153889 | 0.00939861 | HC3 | -0.00966667 | 0.0177629 | 0.5863 |
+| C(architecture)[T.transformer 1B] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.0498052 | 0.0126859 | 8.63647e-05 | HC3 | 0.012 | 0.0141114 | 0.395116 |
+| C(architecture)[T.transformer 7B] | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.394651 | 0.0142116 | 1.01099e-169 | HC3 | 0.0926667 | 0.0153735 | 1.66328e-09 |
+| num_variables_centered | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.11451 | 0.00224496 | 0 | HC3 | -0.0275449 | 0.002517 | 7.13446e-28 |
+| num_assignments_centered | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0189598 | 0.000283335 | 0 | HC3 | -0.00457086 | 0.000321162 | 5.77972e-46 |
+| num_variables_centered:num_assignments_centered | reassign const | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.000176341 | 0.000171514 | 0.303881 | HC3 | -7.29996e-05 | 0.000194454 | 0.707357 |
+| Intercept | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.115308 | 0.00855919 | 2.29e-41 | HC3 | 0.471774 | 0.00956459 | 0 |
+| C(architecture)[T.GDN± 1B] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.264283 | 0.0118694 | 7.91097e-110 | HC3 | -0.063 | 0.01316 | 1.69108e-06 |
+| C(architecture)[T.hybrid 1B] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0373126 | 0.0126708 | 0.00323199 | HC3 | -0.009 | 0.0141783 | 0.525578 |
+| C(architecture)[T.hybrid 275M] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.115066 | 0.0126519 | 9.47483e-20 | HC3 | -0.0276667 | 0.0140154 | 0.0483803 |
+| C(architecture)[T.hybrid 7B] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.111543 | 0.0129153 | 5.79591e-18 | HC3 | 0.027 | 0.0148119 | 0.0683241 |
+| C(architecture)[T.transformer 1B] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0276298 | 0.0127109 | 0.0297268 | HC3 | -0.00666667 | 0.0143344 | 0.641874 |
+| C(architecture)[T.transformer 7B] | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.311484 | 0.0117339 | 2.88655e-155 | HC3 | -0.074 | 0.0128855 | 9.30849e-09 |
+| num_variables_centered | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.113843 | 0.00213677 | 0 | HC3 | -0.0274513 | 0.00237239 | 5.77064e-31 |
+| num_assignments_centered | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0220769 | 0.000260352 | 0 | HC3 | -0.00532393 | 0.000284346 | 3.18849e-78 |
+| num_variables_centered:num_assignments_centered | reassign var | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.00126121 | 0.000172591 | 2.72213e-13 | HC3 | 0.000355111 | 0.000186525 | 0.0569331 |
+| Intercept | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.228884 | 0.00765429 | 1.81345e-196 | HC3 | 0.444587 | 0.00848034 | 0 |
+| C(architecture)[T.GDN± 1B] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.24356 | 0.0110436 | 8.65347e-108 | HC3 | -0.0576667 | 0.0120875 | 1.83514e-06 |
+| C(architecture)[T.hybrid 1B] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0568965 | 0.0110836 | 2.8454e-07 | HC3 | -0.0136667 | 0.0121716 | 0.26151 |
+| C(architecture)[T.hybrid 275M] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.20342 | 0.0107651 | 1.22539e-79 | HC3 | -0.0483333 | 0.0118572 | 4.57612e-05 |
+| C(architecture)[T.hybrid 7B] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.178496 | 0.012137 | 5.82651e-49 | HC3 | 0.0433333 | 0.0136499 | 0.00150031 |
+| C(architecture)[T.transformer 1B] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | 0.0331367 | 0.010993 | 0.00257542 | HC3 | 0.008 | 0.0123495 | 0.517115 |
+| C(architecture)[T.transformer 7B] | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.245 | 0.011711 | 3.48235e-97 | HC3 | -0.058 | 0.0130161 | 8.34994e-06 |
+| num_variables_centered | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.133885 | 0.00194999 | 0 | HC3 | -0.031633 | 0.00215139 | 6.12061e-49 |
+| num_assignments_centered | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.0142424 | 0.000223098 | 0 | HC3 | -0.00334243 | 0.000248463 | 2.97954e-41 |
+| num_variables_centered:num_assignments_centered | undefined | score ~ C(architecture) + num_variables_centered * num_assignments_centered | HC3 | -0.00381651 | 0.000141344 | 1.41646e-160 | HC3 | -0.000821956 | 0.000155276 | 1.19978e-07 |

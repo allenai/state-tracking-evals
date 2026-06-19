@@ -36,16 +36,17 @@ from __future__ import annotations
 import colorsys
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Any, TypeAlias, TypeGuard, cast, overload
+from typing import Any, TypeGuard, cast, overload
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import seaborn as sns
 
 Color = tuple[float, float, float]
-ColorLike: TypeAlias = str | Color
+type ColorLike = str | Color
+type PaletteSpec = str | Mapping[str, ColorLike] | Iterable[ColorLike]
 Palette = dict[str, Color]
-PaletteNameFormatter: TypeAlias = Callable[[str, str], str]
+type PaletteNameFormatter = Callable[[str, str], str]
 
 # Widths are text block widths in inches, taken from the official conference
 # LaTeX styles/templates current as of March 10, 2026.
@@ -137,8 +138,8 @@ def _to_rgb_tuple(color: ColorLike) -> Color:
 def _darken_color(color: ColorLike, by: float) -> Color:
     by = min(max(float(by), 0.0), 1.0)
     rgb = _to_rgb_tuple(color)
-    h, l, s = colorsys.rgb_to_hls(*rgb)
-    darker = colorsys.hls_to_rgb(h, l * (1.0 - by), s)
+    h, lightness, s = colorsys.rgb_to_hls(*rgb)
+    darker = colorsys.hls_to_rgb(h, lightness * (1.0 - by), s)
     return (float(darker[0]), float(darker[1]), float(darker[2]))
 
 
@@ -223,19 +224,38 @@ def darken(
 PALETTES: dict[str, Any] = {"models": {}}
 
 
-def _palette_colors(color: str, names: list[str]) -> Palette:
+def _palette_colors(color: PaletteSpec, names: list[str] | None) -> Palette:
+    if isinstance(color, str):
+        if not names:
+            raise ValueError("names must be a non-empty list")
+
+        # Assign darker shades to earlier models, independent of seaborn's
+        # palette ordering for a particular color ramp.
+        palette_colors = sorted(
+            (_to_rgb_tuple(rgb) for rgb in sns.color_palette(color, n_colors=len(names) + 2)[1:-1]),
+            key=_relative_luminance,
+        )
+        return {name: rgb for name, rgb in zip(names, palette_colors, strict=True)}
+
+    if isinstance(color, Mapping):
+        color_mapping = cast(Mapping[str, ColorLike], color)
+        palette_names = names if names is not None else list(color_mapping)
+        if not palette_names:
+            raise ValueError("names must be a non-empty list")
+        missing_names = [name for name in palette_names if name not in color_mapping]
+        if missing_names:
+            missing = ", ".join(repr(name) for name in missing_names)
+            raise ValueError(f"Missing colors for palette names: {missing}")
+        return {name: _to_rgb_tuple(color_mapping[name]) for name in palette_names}
+
     if not names:
         raise ValueError("names must be a non-empty list")
 
-    # Assign darker shades to earlier models, independent of seaborn's
-    # palette ordering for a particular color ramp.
-    palette_colors = sorted(
-        (
-            _to_rgb_tuple(rgb)
-            for rgb in sns.color_palette(color, n_colors=len(names) + 2)[1:-1]
-        ),
-        key=_relative_luminance,
-    )
+    palette_colors = [_to_rgb_tuple(rgb) for rgb in color]
+    if len(palette_colors) != len(names):
+        raise ValueError(
+            f"Expected {len(names)} colors for {len(names)} names, got {len(palette_colors)}"
+        )
     return {name: rgb for name, rgb in zip(names, palette_colors, strict=True)}
 
 
@@ -254,9 +274,7 @@ def _set_palette_entries(
     family_key = _palette_family_key(key, family)
     existing_family_palette = PALETTES.get(family_key, {})
     existing_family_palette_dict = (
-        dict(existing_family_palette)
-        if isinstance(existing_family_palette, Mapping)
-        else {}
+        dict(existing_family_palette) if isinstance(existing_family_palette, Mapping) else {}
     )
 
     if replace:
@@ -287,8 +305,8 @@ def _clear_palette_namespace(key: str) -> None:
 def set_palette(
     key: str,
     family: str,
-    color: str,
-    names: list[str],
+    color: PaletteSpec,
+    names: list[str] | None = None,
     *,
     display_name: PaletteNameFormatter = _palette_display_name,
 ) -> Palette:
@@ -306,8 +324,8 @@ def set_palette(
 def update_palette(
     key: str,
     family: str,
-    color: str,
-    names: list[str],
+    color: PaletteSpec,
+    names: list[str] | None = None,
     *,
     display_name: PaletteNameFormatter = _palette_display_name,
 ) -> Palette:
@@ -321,7 +339,7 @@ def update_palette(
     )
 
 
-def set_model_palette(family: str, color: str, models: list[str]) -> Palette:
+def set_model_palette(family: str, color: PaletteSpec, models: list[str]) -> Palette:
     if not models:
         raise ValueError("models must be a non-empty list of model names")
     return set_palette(
@@ -333,7 +351,7 @@ def set_model_palette(family: str, color: str, models: list[str]) -> Palette:
     )
 
 
-def update_model_palette(family: str, color: str, models: list[str]) -> Palette:
+def update_model_palette(family: str, color: PaletteSpec, models: list[str]) -> Palette:
     if not models:
         raise ValueError("models must be a non-empty list of model names")
     return update_palette(
@@ -345,7 +363,7 @@ def update_model_palette(family: str, color: str, models: list[str]) -> Palette:
     )
 
 
-def set_dataset_palette(family: str, color: str, datasets: list[str]) -> Palette:
+def set_dataset_palette(family: str, color: PaletteSpec, datasets: list[str]) -> Palette:
     return set_palette(
         key="dataset",
         family=family,
@@ -355,7 +373,7 @@ def set_dataset_palette(family: str, color: str, datasets: list[str]) -> Palette
     )
 
 
-def update_dataset_palette(family: str, color: str, datasets: list[str]) -> Palette:
+def update_dataset_palette(family: str, color: PaletteSpec, datasets: list[str]) -> Palette:
     return update_palette(
         key="dataset",
         family=family,
@@ -365,18 +383,10 @@ def update_dataset_palette(family: str, color: str, datasets: list[str]) -> Pale
     )
 
 
-update_model_palette(
-    "Claude", "Oranges", ["Opus 4", "Sonnet 4", "Sonnet 3.7", "Haiku 3.5"]
-)
-update_model_palette(
-    "OpenAI", "Greens", ["GPT-5.2", "GPT-5 mini", "GPT-4.1", "gpt-oss-120b"]
-)
-update_model_palette(
-    "Gemini", "Blues", ["2.5 Pro", "2.5 Flash", "2.5 Flash-Lite", "2.0 Flash"]
-)
-update_model_palette(
-    "Gemma", "blend:#d6fbff,#00bcd4", ["3 27B", "3 12B", "3 4B", "3 1B"]
-)
+update_model_palette("Claude", "Oranges", ["Opus 4", "Sonnet 4", "Sonnet 3.7", "Haiku 3.5"])
+update_model_palette("OpenAI", "Greens", ["GPT-5.2", "GPT-5 mini", "GPT-4.1", "gpt-oss-120b"])
+update_model_palette("Gemini", "Blues", ["2.5 Pro", "2.5 Flash", "2.5 Flash-Lite", "2.0 Flash"])
+update_model_palette("Gemma", "blend:#d6fbff,#00bcd4", ["3 27B", "3 12B", "3 4B", "3 1B"])
 update_model_palette(
     "OLMo", "Purples", ["3 32B Instruct", "3 32B Think", "3 32B Base", "3 7B Base"]
 )
