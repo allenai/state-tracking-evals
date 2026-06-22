@@ -1,13 +1,13 @@
 {
-  "n_rows": 2982,
-  "n_examples": 84000,
+  "n_rows": 3408,
+  "n_examples": 96000,
   "tasks": {
     "unique": {
       "formula": "score ~ C(architecture) + num_variables_centered",
       "glm_cov_type": "HC3",
       "wls_cov_type": "HC3",
-      "n_rows": 21,
-      "n_examples": 21000,
+      "n_rows": 24,
+      "n_examples": 24000,
       "glm_summary": "unique/glm_summary.txt",
       "wls_summary": "unique/wls_summary.txt"
     },
@@ -15,8 +15,8 @@
       "formula": "score ~ C(architecture) + num_variables_centered * num_assignments_centered",
       "glm_cov_type": "HC3",
       "wls_cov_type": "HC3",
-      "n_rows": 987,
-      "n_examples": 21000,
+      "n_rows": 1128,
+      "n_examples": 24000,
       "glm_summary": "reassign_const/glm_summary.txt",
       "wls_summary": "reassign_const/wls_summary.txt"
     },
@@ -24,8 +24,8 @@
       "formula": "score ~ C(architecture) + num_variables_centered * num_assignments_centered",
       "glm_cov_type": "HC3",
       "wls_cov_type": "HC3",
-      "n_rows": 987,
-      "n_examples": 21000,
+      "n_rows": 1128,
+      "n_examples": 24000,
       "glm_summary": "reassign_var/glm_summary.txt",
       "wls_summary": "reassign_var/wls_summary.txt"
     },
@@ -33,8 +33,8 @@
       "formula": "score ~ C(architecture) + num_variables_centered * num_assignments_centered",
       "glm_cov_type": "HC3",
       "wls_cov_type": "HC3",
-      "n_rows": 987,
-      "n_examples": 21000,
+      "n_rows": 1128,
+      "n_examples": 24000,
       "glm_summary": "undefined/glm_summary.txt",
       "wls_summary": "undefined/wls_summary.txt"
     }

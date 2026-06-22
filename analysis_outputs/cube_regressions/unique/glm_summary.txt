@@ -1,23 +1,24 @@
                  Generalized Linear Model Regression Results                  
 ==============================================================================
-Dep. Variable:                  score   No. Observations:                   21
-Model:                            GLM   Df Residuals:                    20992
-Model Family:                Binomial   Df Model:                            7
+Dep. Variable:                  score   No. Observations:                   24
+Model:                            GLM   Df Residuals:                    23991
+Model Family:                Binomial   Df Model:                            8
 Link Function:                  Logit   Scale:                          1.0000
-Method:                          IRLS   Log-Likelihood:                -5836.9
-Date:                Fri, 19 Jun 2026   Deviance:                       230.58
-Time:                        09:19:42   Pearson chi2:                     291.
+Method:                          IRLS   Log-Likelihood:                -7019.3
+Date:                Mon, 22 Jun 2026   Deviance:                       231.81
+Time:                        13:48:50   Pearson chi2:                     294.
 No. Iterations:                     8   Pseudo R-squ. (CS):              1.000
 Covariance Type:                  HC3                                         
-=====================================================================================================
-                                        coef    std err          z      P>|z|      [0.025      0.975]
------------------------------------------------------------------------------------------------------
-Intercept                             0.9419      0.003    305.941      0.000       0.936       0.948
-C(architecture)[T.GDN± 1B]           -0.0017      0.004     -0.428      0.669      -0.009       0.006
-C(architecture)[T.hybrid 1B]          0.2044      0.004     47.821      0.000       0.196       0.213
-C(architecture)[T.hybrid 275M]       -0.2194      0.004    -60.093      0.000      -0.227      -0.212
-C(architecture)[T.hybrid 7B]          4.1160      0.011    378.306      0.000       4.095       4.137
-C(architecture)[T.transformer 1B]     1.1116      0.005    204.982      0.000       1.101       1.122
-C(architecture)[T.transformer 7B]     2.8632      0.026    108.904      0.000       2.812       2.915
-num_variables_centered               -0.2836      0.001   -273.213      0.000      -0.286      -0.282
-=====================================================================================================
+=======================================================================================================
+                                          coef    std err          z      P>|z|      [0.025      0.975]
+-------------------------------------------------------------------------------------------------------
+Intercept                               0.9425      0.003    312.440      0.000       0.937       0.948
+C(architecture)[T.GDN± 1B]             -0.0017      0.004     -0.432      0.666      -0.009       0.006
+C(architecture)[T.hybrid 1B]            0.2045      0.004     47.951      0.000       0.196       0.213
+C(architecture)[T.hybrid 275M]         -0.2195      0.004    -61.103      0.000      -0.227      -0.212
+C(architecture)[T.hybrid 7B]            4.1168      0.011    377.233      0.000       4.095       4.138
+C(architecture)[T.transformer 1B]       1.1120      0.005    203.839      0.000       1.101       1.123
+C(architecture)[T.transformer 275M]    -0.0635      0.003    -20.999      0.000      -0.069      -0.058
+C(architecture)[T.transformer 7B]       2.8639      0.026    108.851      0.000       2.812       2.915
+num_variables_centered                 -0.2854      0.001   -336.203      0.000      -0.287      -0.284
+=======================================================================================================

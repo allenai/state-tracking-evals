@@ -37,17 +37,26 @@ def get_experiment_arguments(exp: dict) -> list:
     return jobs[0].get("execution", {}).get("spec", {}).get("arguments", [])
 
 
+def get_launch_group(exp: dict) -> Optional[str]:
+    """Extract the olmo-eval group from the launch command, if present."""
+    cmd = get_experiment_arguments(exp)
+    if not isinstance(cmd, list):
+        return None
+    for i, arg in enumerate(cmd):
+        if arg in ("--group", "--experiment-group") and i + 1 < len(cmd):
+            return cmd[i + 1]
+    return None
+
+
 def extract_olmo_eval_group(metrics: dict, exp: dict) -> str:
     # Try to get from metrics first
     group = metrics.get("experiment_group")
     if group:
         return group
     # Try to parse from launch command
-    cmd = get_experiment_arguments(exp)
-    if isinstance(cmd, list):
-        for i, arg in enumerate(cmd):
-            if arg in ("--group", "--experiment-group") and i + 1 < len(cmd):
-                return cmd[i + 1]
+    group = get_launch_group(exp)
+    if group:
+        return group
     return "unknown"
 
 
@@ -176,15 +185,28 @@ def main():
         with open(combined_path) as f:
             prev_results = json.load(f)
         prev_exp_ids = {r["experiment_id"] for r in prev_results}
+    else:
+        prev_results = []
 
     print(f"Fetching all experiments from Beaker workspace: {args.workspace}")
     all_experiments = get_workspace_experiments(args.workspace)
     experiments = [e for e in all_experiments if is_olmo_eval_experiment(e)]
     print(f"Found {len(experiments)} olmo-eval experiments (out of {len(all_experiments)} total)")
 
+    # Most experiments include the olmo-eval group in the launch command. Use that
+    # before downloading results so unrelated workspace experiments do not get fetched
+    # just to inspect their metrics.json.
+    group_experiments = [
+        e for e in experiments
+        if (launch_group := get_launch_group(e)) is None or launch_group == args.group
+    ]
+    skipped_by_group = len(experiments) - len(group_experiments)
+    if skipped_by_group:
+        print(f"Skipped {skipped_by_group} experiments from other launch groups")
+
     # Check for new completed experiments not yet in all_results.json
     new_experiments = [
-        e for e in experiments
+        e for e in group_experiments
         if e["id"] not in prev_exp_ids
         and (not args.completed_only or get_job_status(e) == "succeeded")
     ]
@@ -195,9 +217,10 @@ def main():
 
     print(f"{len(new_experiments)} new experiments to process\n")
 
-    # Filter to all succeeded experiments for building the full results file
-    to_process = [
-        e for e in experiments
+    # Only new experiments need network fetches on incremental runs. If there is no
+    # existing combined file, build it from all matching completed experiments.
+    to_process = new_experiments if prev_exp_ids else [
+        e for e in group_experiments
         if args.completed_only and get_job_status(e) == "succeeded"
         or not args.completed_only
     ]
@@ -206,6 +229,12 @@ def main():
         exp_id = exp["id"]
         exp_name = exp.get("name", exp_id)
         status = get_job_status(exp)
+
+        label = "[new] " if exp_id not in prev_exp_ids else ""
+        if args.no_download:
+            if label:
+                tqdm.write(f"  {label}{exp_name}  id={exp_id}  status={status}")
+            return None
 
         exp_dir = download_results(exp, group_dir)
         if exp_dir is None:
@@ -220,12 +249,8 @@ def main():
         if olmo_group != args.group:
             return None
 
-        label = "[new] " if exp_id not in prev_exp_ids else ""
         if label:
             tqdm.write(f"  {label}{exp_name}  id={exp_id}  status={status}")
-
-        if args.no_download:
-            return None
 
         summary = metrics.get("summary", {})
         model = metrics.get("config", {}).get("provider", {}).get("model", "unknown")
@@ -239,7 +264,7 @@ def main():
             "tasks": metrics.get("tasks", []),
         }
 
-    all_results = []
+    all_results = list(prev_results)
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {pool.submit(process_one, exp): exp for exp in to_process}
         with tqdm(total=len(futures), unit="exp") as pbar:
@@ -250,6 +275,7 @@ def main():
                 pbar.update(1)
 
     if not args.no_download and all_results:
+        all_results.sort(key=lambda result: result["experiment_id"])
         with open(combined_path, "w") as f:
             json.dump(all_results, f, indent=2)
         print(f"\nSaved {len(all_results)} results to {combined_path}")

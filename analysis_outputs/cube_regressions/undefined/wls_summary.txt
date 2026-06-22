@@ -1,32 +1,33 @@
                             WLS Regression Results                            
 ==============================================================================
-Dep. Variable:                  score   R-squared:                       0.366
-Model:                            WLS   Adj. R-squared:                  0.360
-Method:                 Least Squares   F-statistic:                     70.14
-Date:                Fri, 19 Jun 2026   Prob (F-statistic):           1.58e-99
-Time:                        09:19:42   Log-Likelihood:                 791.64
-No. Observations:                 987   AIC:                            -1563.
-Df Residuals:                     977   BIC:                            -1514.
-Df Model:                           9                                         
+Dep. Variable:                  score   R-squared:                       0.364
+Model:                            WLS   Adj. R-squared:                  0.359
+Method:                 Least Squares   F-statistic:                     71.79
+Date:                Mon, 22 Jun 2026   Prob (F-statistic):          4.00e-113
+Time:                        13:48:50   Log-Likelihood:                 909.29
+No. Observations:                1128   AIC:                            -1797.
+Df Residuals:                    1117   BIC:                            -1741.
+Df Model:                          10                                         
 Covariance Type:                  HC3                                         
 ===================================================================================================================
                                                       coef    std err          z      P>|z|      [0.025      0.975]
 -------------------------------------------------------------------------------------------------------------------
-Intercept                                           0.4446      0.008     52.426      0.000       0.428       0.461
+Intercept                                           0.4446      0.008     52.463      0.000       0.428       0.461
 C(architecture)[T.GDN± 1B]                         -0.0577      0.012     -4.771      0.000      -0.081      -0.034
-C(architecture)[T.hybrid 1B]                       -0.0137      0.012     -1.123      0.262      -0.038       0.010
-C(architecture)[T.hybrid 275M]                     -0.0483      0.012     -4.076      0.000      -0.072      -0.025
-C(architecture)[T.hybrid 7B]                        0.0433      0.014      3.175      0.002       0.017       0.070
+C(architecture)[T.hybrid 1B]                       -0.0137      0.012     -1.123      0.261      -0.038       0.010
+C(architecture)[T.hybrid 275M]                     -0.0483      0.012     -4.077      0.000      -0.072      -0.025
+C(architecture)[T.hybrid 7B]                        0.0433      0.014      3.175      0.001       0.017       0.070
 C(architecture)[T.transformer 1B]                   0.0080      0.012      0.648      0.517      -0.016       0.032
-C(architecture)[T.transformer 7B]                  -0.0580      0.013     -4.456      0.000      -0.084      -0.032
-num_variables_centered                             -0.0316      0.002    -14.704      0.000      -0.036      -0.027
-num_assignments_centered                           -0.0033      0.000    -13.452      0.000      -0.004      -0.003
-num_variables_centered:num_assignments_centered    -0.0008      0.000     -5.294      0.000      -0.001      -0.001
+C(architecture)[T.transformer 275M]                -0.0267      0.012     -2.179      0.029      -0.051      -0.003
+C(architecture)[T.transformer 7B]                  -0.0580      0.013     -4.459      0.000      -0.083      -0.033
+num_variables_centered                             -0.0319      0.002    -15.861      0.000      -0.036      -0.028
+num_assignments_centered                           -0.0033      0.000    -14.426      0.000      -0.004      -0.003
+num_variables_centered:num_assignments_centered    -0.0009      0.000     -5.866      0.000      -0.001      -0.001
 ==============================================================================
-Omnibus:                        2.217   Durbin-Watson:                   1.843
-Prob(Omnibus):                  0.330   Jarque-Bera (JB):                2.167
-Skew:                           0.069   Prob(JB):                        0.338
-Kurtosis:                       2.816   Cond. No.                         165.
+Omnibus:                        0.877   Durbin-Watson:                   1.910
+Prob(Omnibus):                  0.645   Jarque-Bera (JB):                0.953
+Skew:                           0.042   Prob(JB):                        0.621
+Kurtosis:                       2.885   Cond. No.                         187.
 ==============================================================================
 
 Notes:
