@@ -1,33 +1,37 @@
                             WLS Regression Results                            
 ==============================================================================
-Dep. Variable:                  score   R-squared:                       0.389
-Model:                            WLS   Adj. R-squared:                  0.383
-Method:                 Least Squares   F-statistic:                     79.14
-Date:                Mon, 22 Jun 2026   Prob (F-statistic):          1.50e-122
-Time:                        13:48:50   Log-Likelihood:                 732.28
-No. Observations:                1128   AIC:                            -1443.
-Df Residuals:                    1117   BIC:                            -1387.
-Df Model:                          10                                         
+Dep. Variable:                  score   R-squared:                       0.403
+Model:                            WLS   Adj. R-squared:                  0.398
+Method:                 Least Squares   F-statistic:                     88.93
+Date:                Tue, 07 Jul 2026   Prob (F-statistic):          1.88e-190
+Time:                        14:38:50   Log-Likelihood:                 1124.7
+No. Observations:                1692   AIC:                            -2219.
+Df Residuals:                    1677   BIC:                            -2138.
+Df Model:                          14                                         
 Covariance Type:                  HC3                                         
-===================================================================================================================
-                                                      coef    std err          z      P>|z|      [0.025      0.975]
--------------------------------------------------------------------------------------------------------------------
-Intercept                                           0.5438      0.010     53.023      0.000       0.524       0.564
-C(architecture)[T.GDN± 1B]                         -0.0973      0.015     -6.643      0.000      -0.126      -0.069
-C(architecture)[T.hybrid 1B]                       -0.0350      0.014     -2.487      0.013      -0.063      -0.007
-C(architecture)[T.hybrid 275M]                     -0.0717      0.014     -5.086      0.000      -0.099      -0.044
-C(architecture)[T.hybrid 7B]                       -0.0097      0.018     -0.543      0.587      -0.045       0.025
-C(architecture)[T.transformer 1B]                   0.0120      0.014      0.854      0.393      -0.016       0.040
-C(architecture)[T.transformer 275M]                -0.0960      0.014     -7.002      0.000      -0.123      -0.069
-C(architecture)[T.transformer 7B]                   0.0927      0.015      6.018      0.000       0.062       0.123
-num_variables_centered                             -0.0280      0.002    -12.138      0.000      -0.033      -0.023
-num_assignments_centered                           -0.0045      0.000    -15.322      0.000      -0.005      -0.004
-num_variables_centered:num_assignments_centered  3.606e-05      0.000      0.203      0.839      -0.000       0.000
+==========================================================================================================================
+                                                             coef    std err          z      P>|z|      [0.025      0.975]
+--------------------------------------------------------------------------------------------------------------------------
+Intercept                                                  0.5444      0.010     55.643      0.000       0.525       0.564
+C(architecture)[T.GDN ± 1B]                               -0.0973      0.014     -6.942      0.000      -0.125      -0.070
+C(architecture)[T.hybrid 1B]                              -0.0350      0.014     -2.515      0.012      -0.062      -0.008
+C(architecture)[T.hybrid 275M]                            -0.0717      0.013     -5.396      0.000      -0.098      -0.046
+C(architecture)[T.hybrid 275M + aperiodic supervised]     -0.0547      0.014     -3.848      0.000      -0.083      -0.027
+C(architecture)[T.hybrid 275M + periodic supervised]      -0.1337      0.013    -10.295      0.000      -0.159      -0.108
+C(architecture)[T.hybrid 275M + periodic unsupervised]    -0.0800      0.015     -5.501      0.000      -0.109      -0.051
+C(architecture)[T.hybrid 275M + r-trivial supervised]     -0.1360      0.014     -9.733      0.000      -0.163      -0.109
+C(architecture)[T.hybrid 7B]                              -0.0097      0.018     -0.529      0.597      -0.046       0.026
+C(architecture)[T.transformer 1B]                          0.0120      0.014      0.875      0.381      -0.015       0.039
+C(architecture)[T.transformer 275M]                       -0.0960      0.013     -7.216      0.000      -0.122      -0.070
+C(architecture)[T.transformer 7B]                          0.0927      0.016      5.829      0.000       0.062       0.124
+num_variables_centered                                    -0.0362      0.002    -19.516      0.000      -0.040      -0.033
+num_assignments_centered                                  -0.0034      0.000    -14.486      0.000      -0.004      -0.003
+num_variables_centered:num_assignments_centered            0.0002      0.000      1.642      0.101   -4.48e-05       0.001
 ==============================================================================
-Omnibus:                        5.689   Durbin-Watson:                   1.731
-Prob(Omnibus):                  0.058   Jarque-Bera (JB):                5.569
-Skew:                           0.160   Prob(JB):                       0.0618
-Kurtosis:                       3.125   Cond. No.                         192.
+Omnibus:                       19.385   Durbin-Watson:                   1.652
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):               20.556
+Skew:                           0.227   Prob(JB):                     3.44e-05
+Kurtosis:                       3.291   Cond. No.                         284.
 ==============================================================================
 
 Notes:

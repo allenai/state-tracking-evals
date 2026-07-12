@@ -25,4 +25,4 @@ rev = "0.9.1"
 [[repos.hooks]]
 id = "nbstripout"
 name = "check notebook outputs are cleared"
-args = ["--verify", "--keep-id"]
+args = ["--drop-empty-cells"]
