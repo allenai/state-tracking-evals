@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
@@ -115,6 +116,31 @@ def get_job_status(exp: dict) -> str:
     return "unknown"
 
 
+def format_bytes(size: int) -> str:
+    """Format a byte count for a compact progress label."""
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if size < 1024 or unit == "TiB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.2f} {unit}"
+        size /= 1024
+    raise AssertionError("unreachable")
+
+
+def get_dataset_transfer_info(dataset_id: str) -> tuple[int, int] | None:
+    """Return (file count, total bytes) from the dataset manifest when available."""
+    result = subprocess.run(
+        ["beaker", "dataset", "ls", "--format", "json", dataset_id],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        files = json.loads(result.stdout)
+        return len(files), sum(file.get("size", 0) for file in files)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 def download_results(exp: dict, output_dir: Path) -> Optional[Path]:
     exp_id = exp["id"]
     exp_dir = output_dir / exp_id
@@ -135,12 +161,39 @@ def download_results(exp: dict, output_dir: Path) -> Optional[Path]:
     if tmp_dir.exists():
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        ["beaker", "dataset", "fetch", "--output", str(tmp_dir / "main"), dataset_id],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        tqdm.write(f"  [warn] Could not download dataset {dataset_id} for {exp_id}: {result.stderr.strip()}")
+
+
+    transfer_info = get_dataset_transfer_info(dataset_id)
+    if transfer_info is None:
+        description = f"  Downloading {exp_id}"
+    else:
+        file_count, total_bytes = transfer_info
+        description = f"  Downloading {exp_id} ({format_bytes(total_bytes)}, {file_count} files)"
+
+    # Do not capture the fetch command's output: Beaker can then render its own
+    # connection/transfer status. The elapsed-time indicator remains visible even
+    # when the CLI has no byte-level update to report yet.
+    command = ["beaker", "dataset", "fetch", "--output", str(tmp_dir / "main"), dataset_id]
+    process = subprocess.Popen(command)
+    try:
+        with tqdm(
+            total=None,
+            desc=description,
+            unit="s",
+            mininterval=1,
+            leave=False,
+            bar_format="{desc} | elapsed {elapsed}",
+        ) as transfer_progress:
+            while process.poll() is None:
+                time.sleep(1)
+                transfer_progress.update(1)
+    except KeyboardInterrupt:
+        process.terminate()
+        process.wait()
+        raise
+
+    if process.returncode != 0:
+        tqdm.write(f"  [warn] Could not download dataset {dataset_id} for {exp_id} (beaker exited {process.returncode})")
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
         return None
