@@ -164,10 +164,16 @@ def parse_metrics(exp_dir: Path) -> Optional[dict]:
         return json.load(f)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Fetch olmo-eval results for a specific olmo-eval group.")
-    parser.add_argument("--group", default=GROUP, help="olmo-eval group name")
-    parser.add_argument("--workspace", default=WORKSPACE, help="Beaker workspace (user namespace) to fetch experiments from")
+def main(
+    *,
+    default_group: str = GROUP,
+    default_workspace: str = WORKSPACE,
+    description: str = "Fetch olmo-eval results for a specific olmo-eval group.",
+):
+    """Fetch results, allowing small group-specific entry points to set defaults."""
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--group", default=default_group, help="olmo-eval group name")
+    parser.add_argument("--workspace", default=default_workspace, help="Beaker workspace (user namespace) to fetch experiments from")
     parser.add_argument("--output", type=Path, default=OUTPUT_DIR, help="Base output directory (results will be organized by group)")
     parser.add_argument("--completed-only", action="store_true", help="Skip experiments still running")
     parser.add_argument("--no-download", action="store_true", help="Only list, don't download")
