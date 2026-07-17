@@ -8,7 +8,7 @@ Usage:
 from fetch_results import main
 
 
-GROUP = "jacksonp-state-bench-lc"
+GROUP = "jacksonp-state-bench-lc-2"
 WORKSPACE = "ai2/beyond-state"
 
 

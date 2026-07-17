@@ -19,7 +19,7 @@ from typing import Optional
 from tqdm import tqdm
 
 
-GROUP = "jacksonp-directly-trained-synthetic-evals"
+GROUP = "jacksonp-directly-trained-synthetic-evals-2"
 WORKSPACE = "ai2/beyond-state"
 OUTPUT_DIR = Path(__file__).parent / "results"
 
