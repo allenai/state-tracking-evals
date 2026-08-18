@@ -12,6 +12,7 @@ dependencies = [
     "notebook>=7.5.7",
     "olmo-eval-internal[beaker]",
     "pandas>=2.3.3",
+    "python-dotenv>=1.2.2",
     "seaborn>=0.13.2",
     "statsmodels>=0.14.6",
     "tqdm>=4.67.1",

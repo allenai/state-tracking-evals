@@ -363,6 +363,45 @@ def update_model_palette(family: str, color: PaletteSpec, models: list[str]) -> 
     )
 
 
+# Canonical hue assignment for the state-bench model architectures, shared by
+# the analysis notebooks so the same architecture is always the same color.
+ARCHITECTURE_PALETTE_SCHEMES: dict[str, str] = {
+    "Transformer": "Reds",
+    "Qwen": "Greens",
+    "Hybrid": "Purples",
+    "GDN": "Blues",
+}
+
+# Shade steps in the model-size ramps (the four sizes plotted in the
+# long-context notebook: 275M, 800M, 1.4B, 7B).
+MODEL_SIZE_RAMP_STEPS: int = 4
+
+
+def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> list[Color]:
+    """Darkest-to-lightest shade ramp for one architecture's color scheme."""
+    scheme = ARCHITECTURE_PALETTE_SCHEMES[architecture]
+    return sorted(
+        (_to_rgb_tuple(rgb) for rgb in sns.color_palette(scheme, n_colors=steps + 2)[1:-1]),
+        key=_relative_luminance,
+    )
+
+
+def small_model_color(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> Color:
+    """Shared shade for the smallest models across notebooks.
+
+    The directly-trained 60M models and the long-context 275M models use this
+    same color: the blend of the ramp's two lightest steps, slightly darker
+    than the lightest step while staying distinct from the next size up.
+    """
+    ramp = architecture_ramp(architecture, steps)
+    second_lightest, lightest = ramp[-2], ramp[-1]
+    return (
+        (lightest[0] + second_lightest[0]) / 2.0,
+        (lightest[1] + second_lightest[1]) / 2.0,
+        (lightest[2] + second_lightest[2]) / 2.0,
+    )
+
+
 def set_dataset_palette(family: str, color: PaletteSpec, datasets: list[str]) -> Palette:
     return set_palette(
         key="dataset",
@@ -491,6 +530,10 @@ __all__ = [
     "DEFAULT_RCS",
     "rcs",
     "PALETTES",
+    "ARCHITECTURE_PALETTE_SCHEMES",
+    "MODEL_SIZE_RAMP_STEPS",
+    "architecture_ramp",
+    "small_model_color",
     "set_palette",
     "update_palette",
     "set_model_palette",

@@ -8,10 +8,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import shutil
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
@@ -116,7 +118,12 @@ def get_job_status(exp: dict) -> str:
     return "unknown"
 
 
-def download_results(exp: dict, output_dir: Path) -> Optional[Path]:
+# beaker's own progress bars only render sensibly one at a time, so verbose
+# downloads are serialized on this lock instead of interleaving across workers.
+DOWNLOAD_OUTPUT_LOCK = threading.Lock()
+
+
+def download_results(exp: dict, output_dir: Path, verbose: bool = False) -> Optional[Path]:
     exp_id = exp["id"]
     exp_dir = output_dir / exp_id
     if exp_dir.exists() and (exp_dir / "main" / "metrics.json").exists():
@@ -136,12 +143,16 @@ def download_results(exp: dict, output_dir: Path) -> Optional[Path]:
     if tmp_dir.exists():
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        ["beaker", "dataset", "fetch", "--output", str(tmp_dir / "main"), dataset_id],
-        capture_output=True, text=True,
-    )
+    cmd = ["beaker", "dataset", "fetch", "--output", str(tmp_dir / "main"), dataset_id]
+    with DOWNLOAD_OUTPUT_LOCK if verbose else contextlib.nullcontext():
+        if verbose:
+            tqdm.write(f"  [downloading] {exp_id}  dataset={dataset_id}")
+            result = subprocess.run(cmd, text=True)
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        tqdm.write(f"  [warn] Could not download dataset {dataset_id} for {exp_id}: {result.stderr.strip()}")
+        stderr = result.stderr.strip() if result.stderr else "(see output above)"
+        tqdm.write(f"  [warn] Could not download dataset {dataset_id} for {exp_id}: {stderr}")
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
         return None
@@ -178,6 +189,7 @@ def main(
     parser.add_argument("--completed-only", action="store_true", help="Skip experiments still running")
     parser.add_argument("--no-download", action="store_true", help="Only list, don't download")
     parser.add_argument("--workers", type=int, default=32, help="Parallel download workers")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Show per-file download progress from beaker dataset fetch")
     args = parser.parse_args()
 
     group_dir = args.output / sanitize_group_name(args.group)
@@ -242,7 +254,7 @@ def main(
                 tqdm.write(f"  {label}{exp_name}  id={exp_id}  status={status}")
             return None
 
-        exp_dir = download_results(exp, group_dir)
+        exp_dir = download_results(exp, group_dir, verbose=args.verbose)
         if exp_dir is None:
             return None
 
