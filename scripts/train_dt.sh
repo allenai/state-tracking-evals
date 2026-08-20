@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 #
-# Launch the full StateBench training suite: {hybrid,transformer} x
-# {r-trivial,aperiodic,periodic} at the 60M size.
+# Launch the full StateBench direct-training suite: {transformer-rope,
+# transformer-nope, hybrid, gdn-sdp, gdn-full} x {r-trivial, aperiodic,
+# periodic} at the 275M size (the only size this suite uses).
 #
 # Training runs out of the olmo-core submodule rather than this repo. Gantry
 # stamps each Beaker job with the git repo it was launched from, so the
-# submodule's pinned commit (tracking jopetty/OLMo-core `ppt`) is the olmo-core
-# version each job clones and trains with. That submodule is its own uv project
-# -- Python 3.11 plus torch -- and stays separate from this repo's analysis
-# environment, so `uv run` below resolves against olmo-core's dependencies.
+# submodule's pinned commit (tracking allenai/OLMo-core `jacksonp/state-bench-dt`)
+# is the olmo-core version each job clones and trains with. That submodule is
+# its own uv project -- Python 3.11 plus torch -- and stays separate from this
+# repo's analysis environment, so `uv run` below resolves against olmo-core's
+# dependencies.
 #
 # Each invocation of state_bench.py's `launch` command already expands over
 # model-type and distribution when both are omitted, so this script only needs
@@ -21,6 +23,7 @@
 #   scripts/train_dt.sh
 #   scripts/train_dt.sh --n_seeds 3
 #   scripts/train_dt.sh --dry-run
+#   scripts/train_dt.sh --model-type hybrid --distribution periodic
 
 set -euo pipefail
 
@@ -53,11 +56,11 @@ while [[ $# -gt 0 ]]; do
             n_seeds="${1#*=}"
             shift
             ;;
-        --max-gpus)
-            echo "error: --max-gpus is fixed at 8 and cannot be overridden" >&2
+        --size | --size=*)
+            echo "error: --size is fixed at 275M and cannot be overridden" >&2
             exit 1
             ;;
-        --max-gpus=*)
+        --max-gpus | --max-gpus=*)
             echo "error: --max-gpus is fixed at 8 and cannot be overridden" >&2
             exit 1
             ;;
@@ -78,8 +81,8 @@ echo "=== olmo-core @ $(git log -1 --format='%h %s') ==="
 for ((seed = 0; seed < n_seeds; seed++)); do
     if [[ "$n_seeds" -gt 1 ]]; then
         echo "=== Launching StateBench suite for init-seed $seed ==="
-        uv run "$STATE_BENCH_PY" launch --size 60M --max-gpus 8 --init-seed "$seed" "${extra_args[@]+"${extra_args[@]}"}"
+        uv run "$STATE_BENCH_PY" launch --size 275M --max-gpus 8 --init-seed "$seed" "${extra_args[@]+"${extra_args[@]}"}"
     else
-        uv run "$STATE_BENCH_PY" launch --size 60M --max-gpus 8 "${extra_args[@]+"${extra_args[@]}"}"
+        uv run "$STATE_BENCH_PY" launch --size 275M --max-gpus 8 "${extra_args[@]+"${extra_args[@]}"}"
     fi
 done
