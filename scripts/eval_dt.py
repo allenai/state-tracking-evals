@@ -54,10 +54,27 @@ CHECKPOINTS = {
 }
 
 OLMO_3_7B_BASE_ID = "allenai/Olmo-3-1025-7B"
+# StateBench context tiers, ascending; each tier's name is its upper token bound.
+# The full list lives upstream in
+# olmo-eval/src/olmo_eval/evals/tasks/state_bench_lc.py. `tokens_2m_plus` is
+# declared there but no dataset config carries that split yet, so it is omitted.
+NORMAL_TIERS = (
+    "tokens_under_2k",
+    "tokens_4k",
+    "tokens_8k",
+    "tokens_16k",
+    "tokens_32k",
+    "tokens_64k",
+    "tokens_128k",
+    "tokens_256k",
+)
+XL_TIERS = ("tokens_512k", "tokens_1m")
+
+# Tiers launch in bands rather than one job per tier: a band's tasks share a
+# single job, and therefore one vLLM server sized by the band's largest tier.
 TOKEN_STRATA = {
-    "short": ("tokens_0_100k", 100_000),
-    "medium": ("tokens_100k_500k", 500_000),
-    "long": ("tokens_500k_1m", 1_000_000),
+    "normal": (NORMAL_TIERS, 262_144),
+    "xl": (XL_TIERS, 1_048_576),
 }
 
 BASE_HARNESS_OVERRIDES = [
@@ -106,14 +123,15 @@ def get_model_short_name(model_path: str) -> str:
 def build_command(
     model_path: str,
     model_type: str,
-    task: str,
+    tasks: tuple[str, ...],
+    stratum: str,
     max_model_len: int,
+    limit: int | None = None,
     num_gpus: int = NUM_GPUS,
     cluster: str = CLUSTER,
     group: str = GROUP,
     workspace: str = WORKSPACE,
 ) -> list[str]:
-    task_short = task.replace(":", "_")
     cmd = [
         "uv",
         "run",
@@ -125,7 +143,7 @@ def build_command(
         "-H",
         "default",
         "-n",
-        f"{get_model_short_name(model_path)}-{task_short}",
+        f"{get_model_short_name(model_path)}-state_bench_integer_code_{stratum}",
     ]
     harness_overrides = (
         HYBRID_HARNESS_OVERRIDES if model_type == "hybrid" else TRANSFORMER_HARNESS_OVERRIDES
@@ -134,7 +152,12 @@ def build_command(
         cmd.extend(["-o", f"{key}={value.replace('{num_gpus}', str(num_gpus))}"])
     cmd.extend(["-o", f"provider.max_model_len={max_model_len}"])
     cmd.extend(["-m", model_path])
-    cmd.extend(["-t", task])
+    # An `-o` override applies to the preceding `-t`, so a per-task cap has to be
+    # repeated after each task rather than passed once for the whole job.
+    for task in tasks:
+        cmd.extend(["-t", task])
+        if limit is not None:
+            cmd.extend(["-o", f"limit={limit}"])
     cmd.extend(
         [
             "--gpus",
@@ -233,13 +256,20 @@ def parse_args() -> argparse.Namespace:
         "--strata",
         nargs="+",
         choices=TOKEN_STRATA,
-        default=["short"],
-        help="StateBench context-length strata to evaluate. Defaults to short.",
+        default=["normal"],
+        help=(
+            "StateBench context bands to evaluate: normal (tiers up to 256k) or "
+            "xl (512k and above). Defaults to normal."
+        ),
     )
     parser.add_argument(
-        "--subsample",
-        action="store_true",
-        help="Use the deterministic 10%% StateBench task suites.",
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            "Evaluate at most this many instances per tier, sampled with the "
+            "task's own seed. Omit to evaluate every instance."
+        ),
     )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -250,9 +280,8 @@ def main() -> None:
     for model_type in args.model_type:
         for dataset_type in args.dataset_type:
             for stratum in args.strata:
-                token_stratum, max_model_len = TOKEN_STRATA[stratum]
-                suite_name = "state_bench_10pct" if args.subsample else "state_bench"
-                task = f"{suite_name}:integer_code:{token_stratum}"
+                tiers, max_model_len = TOKEN_STRATA[stratum]
+                tasks = tuple(f"state_bench:integer_code:{tier}" for tier in tiers)
                 for seed in args.seed:
                     checkpoints = resolve_checkpoints(
                         model_type, dataset_type, seed, args.checkpoints, args.final
@@ -262,12 +291,14 @@ def main() -> None:
                         command = build_command(
                             model_path,
                             model_type,
-                            task,
+                            tasks,
+                            stratum,
                             max_model_len,
-                            args.gpus,
-                            args.cluster,
-                            args.group,
-                            args.workspace,
+                            limit=args.limit,
+                            num_gpus=args.gpus,
+                            cluster=args.cluster,
+                            group=args.group,
+                            workspace=args.workspace,
                         )
                         if args.dry_run:
                             print(shlex.join(command))

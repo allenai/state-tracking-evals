@@ -131,18 +131,37 @@ BASELINES: dict[str, dict[str, str | int]] = {
     "olmo-3-hybrid-7b": {"hf": "allenai/Olmo-Hybrid-7B", "ctx": 65536, "status": "ok"},
 }
 
+# StateBench context tiers, ascending; each tier's name is its upper token bound.
+# The full list lives upstream in
+# olmo-eval/src/olmo_eval/evals/tasks/state_bench_lc.py. `tokens_2m_plus` is
+# declared there but no dataset config carries that split yet, so it is omitted.
+# Note `tokens_1m` only exists for some formatters (all integer-code and ruler
+# configs, plus the periodic variants of the rest).
+NORMAL_TIERS = (
+    "tokens_under_2k",
+    "tokens_4k",
+    "tokens_8k",
+    "tokens_16k",
+    "tokens_32k",
+    "tokens_64k",
+    "tokens_128k",
+    "tokens_256k",
+)
+XL_TIERS = ("tokens_512k", "tokens_1m")
+
+# Tiers launch in bands rather than one job per tier: a band's tasks share a
+# single job, and therefore one vLLM server sized by the band's largest tier.
 TOKEN_STRATA = {
-    "short": ("tokens_0_100k", 100_000),
-    "medium": ("tokens_100k_500k", 500_000),
-    "long": ("tokens_500k_1m", 1_000_000),
+    "normal": (NORMAL_TIERS, 262_144),
+    "xl": (XL_TIERS, 1_048_576),
 }
 
 
-def experiment_name(model_path: str, task: str) -> str:
+def experiment_name(model_path: str, stratum: str) -> str:
     """Build a deterministic Beaker experiment name for a model."""
     parts = model_path.rstrip("/").split("/")
     model_short = "_".join(parts[-2:]).lower()
-    return f"{model_short}-{task.replace(':', '-')}"
+    return f"{model_short}-state_bench-{stratum}"
 
 
 def build_command(
@@ -152,10 +171,12 @@ def build_command(
     max_model_len: int = 5_000_000,
     plugins_ref: str | None = None,
     cluster: str = DEFAULT_CLUSTER,
-    task: str = "state_bench",
+    tasks: tuple[str, ...] = ("state_bench",),
+    stratum: str = "normal",
+    limit: int | None = None,
     workspace: str = WORKSPACE,
 ) -> list[str]:
-    exp_name = experiment_name(model_path, task)
+    exp_name = experiment_name(model_path, stratum)
 
     priority = PRIORITIES.get(cluster, "high")
 
@@ -178,7 +199,12 @@ def build_command(
     if model_path.rstrip("/") == "allenai/Olmo-3-1025-7B":
         cmd += ["-o", "provider.kwargs.model_impl=transformers"]
     cmd += ["-m", model_path]
-    cmd += ["-t", task]
+    # An `-o` override applies to the preceding `-t`, so a per-task cap has to be
+    # repeated after each task rather than passed once for the whole job.
+    for task in tasks:
+        cmd += ["-t", task]
+        if limit is not None:
+            cmd += ["-o", f"limit={limit}"]
     cmd += ["--gpus", str(num_gpus)]
     cmd += ["--retries", "3"]
     cmd += ["--priority", priority]
@@ -253,7 +279,19 @@ def main():
         nargs="+",
         choices=TOKEN_STRATA,
         default=list(TOKEN_STRATA),
-        help="Context-length strata to launch as independent jobs (default: all).",
+        help=(
+            "Context bands to launch as independent jobs: normal (tiers up to "
+            "256k) or xl (512k and above). Defaults to both."
+        ),
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            "Evaluate at most this many instances per tier, sampled with the "
+            "task's own seed. Omit to evaluate every instance."
+        ),
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -270,10 +308,10 @@ def main():
         label,
         stratum,
     ):
-        """Launch one StateBench context-length stratum for a model."""
+        """Launch one StateBench context band for a model."""
         nonlocal launched
-        token_stratum, max_model_len = TOKEN_STRATA[stratum]
-        task = f"state_bench:{token_stratum}"
+        tiers, max_model_len = TOKEN_STRATA[stratum]
+        tasks = tuple(f"state_bench:{tier}" for tier in tiers)
         cmd = build_command(
             model_path,
             num_gpus,
@@ -281,10 +319,15 @@ def main():
             max_model_len=max_model_len,
             plugins_ref=plugins_ref,
             cluster=args.cluster,
-            task=task,
+            tasks=tasks,
+            stratum=stratum,
+            limit=args.limit,
             workspace=args.workspace,
         )
-        print(f"\n=== {label} | {task} | {num_gpus} GPUs | mml={max_model_len} ===")
+        print(
+            f"\n=== {label} | {stratum} ({len(tasks)} tiers) | "
+            f"{num_gpus} GPUs | mml={max_model_len} ==="
+        )
         print(" ".join(cmd))
         if not args.dry_run:
             if launched > 0 and args.delay > 0:
