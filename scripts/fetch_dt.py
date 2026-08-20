@@ -2,18 +2,23 @@
 """Fetch state-bench evals on directly-trained models.
 
 Usage:
-    uv run fetch_dt_results.py --completed-only
-    uv run fetch_dt_results.py -v  # show per-file download progress
+    uv run scripts/fetch_dt.py --completed-only
+    uv run scripts/fetch_dt.py -v  # show per-file download progress
 """
 
-from fetch_results import main
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from fetch_results import main  # noqa: E402
 
 
 # Fetch every directly-trained evaluation group from the workspace that owns it.
 BEAKER = [
     {
         "workspace": "ai2/beyond-state",
-        "group": "jacksonp-state-bench-dt-11",
+        "group": "jacksonp-state-bench-dt",
     },
     # {
     #     "workspace": "ai2/linear-rnns",

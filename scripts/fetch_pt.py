@@ -2,11 +2,16 @@
 """Fetch state-bench evals on pre-trained models.
 
 Usage:
-    uv run fetch_sb_lc.py --completed-only
-    uv run fetch_sb_lc.py -v  # show per-file download progress
+    uv run scripts/fetch_pt.py --completed-only
+    uv run scripts/fetch_pt.py -v  # show per-file download progress
 """
 
-from fetch_results import main
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from fetch_results import main  # noqa: E402
 
 BEAKER = [
     {"workspace": "ai2/beyond-state", "group": "jacksonp-state-bench-lc-10"},

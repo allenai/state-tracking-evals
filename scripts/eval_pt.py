@@ -149,37 +149,79 @@ NORMAL_TIERS = (
 )
 XL_TIERS = ("tokens_512k", "tokens_1m")
 
-# Tiers launch in bands rather than one job per tier: a band's tasks share a
-# single job, and therefore one vLLM server sized by the band's largest tier.
+# --strata selects tiers; each tier still launches as its own job so every one
+# starts with a fresh vLLM process and CUDA allocator state.
 TOKEN_STRATA = {
-    "normal": (NORMAL_TIERS, 262_144),
-    "xl": (XL_TIERS, 1_048_576),
+    "normal": NORMAL_TIERS,
+    "xl": XL_TIERS,
 }
+
+# Nominal context ceiling per tier. Measured prompts reach only 88-94% of these,
+# so a tier's window needs room for the scored continuation and nothing more.
+# Sizing per tier rather than per band keeps the KV cache off the memory that
+# full-prompt logprob scoring needs for its logits.
+TIER_CONTEXT_CEILING = {
+    "tokens_under_2k": 2_048,
+    "tokens_4k": 4_096,
+    "tokens_8k": 8_192,
+    "tokens_16k": 16_384,
+    "tokens_32k": 32_768,
+    "tokens_64k": 65_536,
+    "tokens_128k": 131_072,
+    "tokens_256k": 262_144,
+    "tokens_512k": 524_288,
+    "tokens_1m": 1_048_576,
+}
+CONTINUATION_HEADROOM_TOKENS = 2_048
+
+# StateBench scores full-prompt logprobs, so every prefill chunk materializes
+# full-vocabulary logits on top of an already-allocated KV cache. Leave headroom
+# for those temporaries and cap request concurrency. max_num_batched_tokens is
+# set below at 4096, lower than the 8192 these runs were first tuned with.
+STATE_BENCH_VLLM_OVERRIDES = [
+    ("provider.kwargs.gpu_memory_utilization", "0.75"),
+    ("provider.kwargs.max_num_seqs", "16"),
+]
+# Harness-level. The default harness batches at chunk_size=64, which is far more
+# scored sequences in flight than a long-context logprob pass can hold.
+BATCH_CHUNK_SIZE = 8
+# Fragmentation across chunks is what usually turns a tight run into an OOM.
+ALLOCATOR_ENV = "PYTORCH_ALLOC_CONF=expandable_segments:True"
 
 # Instances per tier used by --subsample, for quick passes over the full grid.
 SUBSAMPLE_LIMIT = 100
 
 
-def experiment_name(model_path: str, stratum: str) -> str:
+def max_model_len_for(tier: str) -> int:
+    """Context window for one tier: its ceiling plus room for continuations."""
+    return TIER_CONTEXT_CEILING[tier] + CONTINUATION_HEADROOM_TOKENS
+
+
+def resolve_tiers(requested_tiers: list[str] | None, strata: list[str]) -> list[str]:
+    """Expand --tiers or --strata into tiers, ascending by context length."""
+    selected = set(requested_tiers or [tier for band in strata for tier in TOKEN_STRATA[band]])
+    return [tier for tier in TIER_CONTEXT_CEILING if tier in selected]
+
+
+def experiment_name(model_path: str, tier: str) -> str:
     """Build a deterministic Beaker experiment name for a model."""
     parts = model_path.rstrip("/").split("/")
     model_short = "_".join(parts[-2:]).lower()
-    return f"{model_short}-state_bench-{stratum}"
+    return f"{model_short}-state_bench-{tier}"
 
 
 def build_command(
     model_path: str,
     num_gpus: int = NUM_GPUS,
     group: str = GROUP,
-    max_model_len: int = 5_000_000,
     plugins_ref: str | None = None,
     cluster: str = DEFAULT_CLUSTER,
-    tasks: tuple[str, ...] = ("state_bench",),
-    stratum: str = "normal",
+    tier: str = "tokens_256k",
     limit: int | None = None,
+    save_requests: bool = True,
     workspace: str = WORKSPACE,
 ) -> list[str]:
-    exp_name = experiment_name(model_path, stratum)
+    exp_name = experiment_name(model_path, tier)
 
     priority = PRIORITIES.get(cluster, "high")
 
@@ -197,17 +239,20 @@ def build_command(
     cmd += ["-o", "provider.package=wheel"]
     cmd += ["-o", _plugin_dependencies_override(plugins_ref)]
     cmd += ["-o", "provider.kwargs.attention_backend=FLASH_ATTN"]
-    cmd += ["-o", f"provider.max_model_len={max_model_len}"]
+    cmd += ["-o", f"provider.max_model_len={max_model_len_for(tier)}"]
     cmd += ["-o", "provider.kwargs.max_num_batched_tokens=4096"]
+    for key, value in STATE_BENCH_VLLM_OVERRIDES:
+        cmd += ["-o", f"{key}={value}"]
+    cmd += ["-o", f"batching.chunk_size={BATCH_CHUNK_SIZE}"]
     if model_path.rstrip("/") == "allenai/Olmo-3-1025-7B":
         cmd += ["-o", "provider.kwargs.model_impl=transformers"]
     cmd += ["-m", model_path]
-    # An `-o` override applies to the preceding `-t`, so a per-task cap has to be
-    # repeated after each task rather than passed once for the whole job.
-    for task in tasks:
-        cmd += ["-t", task]
-        if limit is not None:
-            cmd += ["-o", f"limit={limit}"]
+    # An `-o` override applies to the preceding `-t`, so the cap goes after it.
+    cmd += ["-t", f"state_bench:{tier}"]
+    if limit is not None:
+        cmd += ["-o", f"limit={limit}"]
+    if not save_requests:
+        cmd += ["--no-save-requests"]
     cmd += ["--gpus", str(num_gpus)]
     cmd += ["--retries", "3"]
     cmd += ["--priority", priority]
@@ -220,6 +265,7 @@ def build_command(
     cmd += ["--secret-env", "jacksonp_HF_TOKEN:HF_TOKEN"]
     cmd += ["--secret-env", "jacksonp_GITHUB_TOKEN:GITHUB_TOKEN"]
     cmd += ["--env", "VLLM_ALLOW_LONG_MAX_MODEL_LEN=1"]
+    cmd += ["--env", ALLOCATOR_ENV]
     cmd += ["--no-follow"]
     cmd += ["-y"]
     return cmd
@@ -277,14 +323,31 @@ def main():
         default=WORKSPACE,
         help=f"Beaker workspace for launched jobs (default: {WORKSPACE}).",
     )
-    parser.add_argument(
+    tier_group = parser.add_mutually_exclusive_group()
+    tier_group.add_argument(
         "--strata",
         nargs="+",
         choices=TOKEN_STRATA,
         default=list(TOKEN_STRATA),
         help=(
-            "Context bands to launch as independent jobs: normal (tiers up to "
-            "256k) or xl (512k and above). Defaults to both."
+            "Context bands to evaluate: normal (tiers up to 256k) or xl (512k "
+            "and above). Each tier in a band launches as its own job. Defaults "
+            "to both."
+        ),
+    )
+    tier_group.add_argument(
+        "--tiers",
+        nargs="+",
+        choices=list(TIER_CONTEXT_CEILING),
+        help="Launch these exact tiers, e.g. to retry the one that ran out of memory.",
+    )
+    parser.add_argument(
+        "--no-save-requests",
+        dest="save_requests",
+        action="store_false",
+        help=(
+            "Skip saving request payloads, which are huge at long context. Note "
+            "pt_results.ipynb reads per-example doc metadata from them."
         ),
     )
     limit_group = parser.add_mutually_exclusive_group()
@@ -317,28 +380,23 @@ def main():
         model_path,
         *,
         label,
-        stratum,
+        tier,
     ):
-        """Launch one StateBench context band for a model."""
+        """Launch one StateBench context tier for a model."""
         nonlocal launched
-        tiers, max_model_len = TOKEN_STRATA[stratum]
-        tasks = tuple(f"state_bench:{tier}" for tier in tiers)
+        max_model_len = max_model_len_for(tier)
         cmd = build_command(
             model_path,
             num_gpus,
             group=group,
-            max_model_len=max_model_len,
             plugins_ref=plugins_ref,
             cluster=args.cluster,
-            tasks=tasks,
-            stratum=stratum,
+            tier=tier,
             limit=args.limit,
+            save_requests=args.save_requests,
             workspace=args.workspace,
         )
-        print(
-            f"\n=== {label} | {stratum} ({len(tasks)} tiers) | "
-            f"{num_gpus} GPUs | mml={max_model_len} ==="
-        )
+        print(f"\n=== {label} | {tier} | {num_gpus} GPUs | mml={max_model_len} ===")
         print(" ".join(cmd))
         if not args.dry_run:
             if launched > 0 and args.delay > 0:
@@ -365,15 +423,15 @@ def main():
                     short_name = model_path.rstrip("/").split("/")[-1]
                     targets.append((model_path, f"{stage}/{size}/{short_name}"))
 
-    for stratum in args.strata:
+    for tier in resolve_tiers(args.tiers, args.strata):
         for model_path, label in targets:
             launch_task(
                 model_path,
                 label=label,
-                stratum=stratum,
+                tier=tier,
             )
 
-    print(f"\nLaunched {launched} job(s).")
+    print(f"\n{'Would launch' if args.dry_run else 'Launched'} {launched} job(s).")
 
 
 if __name__ == "__main__":

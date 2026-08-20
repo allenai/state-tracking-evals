@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Fetch and parse olmo-eval results from a Beaker group.
 
+Also the shared entry point behind the per-experiment fetchers, which import
+:func:`main` from here to supply their own group and workspace defaults.
+
 Usage:
-    uv run local/fetch_results.py --group jacksonp-hybrid-small-downstream-evals --completed-only --workspace ai2/linear-rnns
+    uv run scripts/fetch_results.py --group jacksonp-hybrid-small-downstream-evals --completed-only --workspace ai2/linear-rnns
 """
 
 from __future__ import annotations
@@ -24,7 +27,10 @@ from tqdm import tqdm
 
 GROUP = "jacksonp-hybrid-small-downstream-evals"  # olmo-eval group name by default
 WORKSPACE = "ai2/linear-rnns"
-OUTPUT_DIR = Path(__file__).parent / "results"
+# Downloads land in the repo's results/ directory, not alongside this script,
+# so the notebooks find them wherever the fetcher is run from.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = REPO_ROOT / "results"
 
 def sanitize_group_name(group: str) -> str:
     # Replace slashes and spaces with underscores
