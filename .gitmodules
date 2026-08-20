@@ -1,0 +1,4 @@
+[submodule "olmo-eval"]
+	path = olmo-eval
+	url = ssh://git@github.com/allenai/olmo-eval.git
+	branch = jacksonp/ladder

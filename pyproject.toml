@@ -10,7 +10,7 @@ dependencies = [
     "jupyterlab>=4.5.8",
     "matplotlib>=3.10.8",
     "notebook>=7.5.7",
-    "olmo-eval-internal[beaker]",
+    "olmo-eval[beaker]",
     "pandas>=2.3.3",
     "python-dotenv>=1.2.2",
     "seaborn>=0.13.2",
@@ -18,8 +18,15 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
+# olmo-eval is vendored as a git submodule pinned to a specific commit (tracking
+# the jacksonp/ladder branch). This single pin controls both the local CLI
+# (installed editable from the submodule) and the version Beaker jobs run: the
+# launch scripts invoke `olmo-eval beaker launch` with cwd set to the submodule,
+# and gantry clones the CWD repo at HEAD into the job. Run `git submodule
+# update --init` after cloning; the pinned commit must be pushed to GitHub for
+# launches to work.
 [tool.uv.sources]
-olmo-eval-internal = { git = "ssh://git@github.com/jopetty/olmo-eval-internal.git", rev = "a76875644b002be012fd4c3d1c8ddbbd42bf21b0" }
+olmo-eval = { path = "olmo-eval", editable = true }
 
 [dependency-groups]
 dev = [

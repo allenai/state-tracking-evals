@@ -4,6 +4,13 @@ import argparse
 import json
 import subprocess
 import time
+from pathlib import Path
+
+# Gantry stamps each Beaker job with the git repo at the launch CWD, so launches
+# run from the olmo-eval submodule — its pinned commit (which must be pushed to
+# GitHub) is the olmo-eval version the job installs.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+OLMO_EVAL_DIR = REPO_ROOT / "olmo-eval"
 
 GROUP = "jacksonp-state-bench-lc-8"
 DEFAULT_CLUSTER = "ai2/saturn"
@@ -152,7 +159,7 @@ def build_command(
 
     priority = PRIORITIES.get(cluster, "high")
 
-    cmd = ["uv", "run", "olmo-eval", "beaker", "launch"]
+    cmd = ["uv", "run", "--project", str(REPO_ROOT), "olmo-eval", "beaker", "launch"]
     cmd += ["-H", "default"]
     cmd += ["-n", exp_name]
     cmd += ["-o", f"provider.num_instances={num_gpus}"]
@@ -282,7 +289,7 @@ def main():
         if not args.dry_run:
             if launched > 0 and args.delay > 0:
                 time.sleep(args.delay)
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, cwd=OLMO_EVAL_DIR)
         launched += 1
 
     targets = []

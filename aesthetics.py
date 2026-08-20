@@ -390,15 +390,16 @@ def small_model_color(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> 
     """Shared shade for the smallest models across notebooks.
 
     The directly-trained 60M models and the long-context 275M models use this
-    same color: the blend of the ramp's two lightest steps, slightly darker
-    than the lightest step while staying distinct from the next size up.
+    same color: the blend of the ramp's second- and third-lightest steps,
+    saturated enough to read on white while staying between the mid-size
+    shades rather than colliding with either.
     """
     ramp = architecture_ramp(architecture, steps)
-    second_lightest, lightest = ramp[-2], ramp[-1]
+    third_lightest, second_lightest = ramp[-3], ramp[-2]
     return (
-        (lightest[0] + second_lightest[0]) / 2.0,
-        (lightest[1] + second_lightest[1]) / 2.0,
-        (lightest[2] + second_lightest[2]) / 2.0,
+        (second_lightest[0] + third_lightest[0]) / 2.0,
+        (second_lightest[1] + third_lightest[1]) / 2.0,
+        (second_lightest[2] + third_lightest[2]) / 2.0,
     )
 
 
@@ -432,6 +433,9 @@ update_model_palette(
 
 
 NONSEMANTIC_COLOR: Color = darken("#ffcc66", by=0.3)
+
+# Reference-line color for chance accuracy in eval plots.
+CHANCE_LINE_COLOR: str = "#E6B800"
 
 
 def set_figure_title(
@@ -544,4 +548,5 @@ __all__ = [
     "save_figure",
     "text_color_for_background",
     "NONSEMANTIC_COLOR",
+    "CHANCE_LINE_COLOR",
 ]

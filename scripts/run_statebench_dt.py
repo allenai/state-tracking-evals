@@ -5,6 +5,12 @@ import shlex
 import subprocess
 from pathlib import Path
 
+# Gantry stamps each Beaker job with the git repo at the launch CWD, so launches
+# run from the olmo-eval submodule — its pinned commit (which must be pushed to
+# GitHub) is the olmo-eval version the job installs.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+OLMO_EVAL_DIR = REPO_ROOT / "olmo-eval"
+
 GROUP = "jacksonp-state-bench-dt"
 CLUSTER = "ai2/saturn"
 PRIORITY = "urgent"
@@ -111,6 +117,8 @@ def build_command(
     cmd = [
         "uv",
         "run",
+        "--project",
+        str(REPO_ROOT),
         "olmo-eval",
         "beaker",
         "launch",
@@ -264,7 +272,7 @@ def main() -> None:
                         if args.dry_run:
                             print(shlex.join(command))
                         else:
-                            subprocess.run(command, check=True)
+                            subprocess.run(command, check=True, cwd=OLMO_EVAL_DIR)
 
 
 if __name__ == "__main__":
