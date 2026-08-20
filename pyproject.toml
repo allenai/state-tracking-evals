@@ -18,13 +18,18 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
-# olmo-eval is vendored as a git submodule pinned to a specific commit (tracking
-# the jacksonp/ladder branch). This single pin controls both the local CLI
-# (installed editable from the submodule) and the version Beaker jobs run: the
-# launch scripts invoke `olmo-eval beaker launch` with cwd set to the submodule,
-# and gantry clones the CWD repo at HEAD into the job. Run `git submodule
-# update --init` after cloning; the pinned commit must be pushed to GitHub for
-# launches to work.
+# Two upstream repos are vendored as git submodules pinned to specific commits;
+# gantry stamps each Beaker job with the git repo it was launched from, so those
+# pins are the versions the jobs clone and run. Run `git submodule update --init`
+# after cloning, and note a pinned commit must be pushed to GitHub to launch.
+#
+#   olmo-eval  (tracks allenai/olmo-eval jacksonp/ladder) -- also installed
+#     editable below, so this one pin controls both the local `olmo-eval` CLI and
+#     the eval jobs, which scripts/run_statebench_*.py launch with cwd set to the
+#     submodule.
+#   olmo-core  (tracks jopetty/OLMo-core ppt) -- NOT a dependency of this project:
+#     it caps Python at <3.12 and needs its own torch, so scripts/train_dt.sh runs
+#     it as its own uv project (Python 3.11) rather than from this environment.
 [tool.uv.sources]
 olmo-eval = { path = "olmo-eval", editable = true }
 
@@ -34,3 +39,8 @@ dev = [
     "ruff>=0.15.16",
     "ty>=0.0.48",
 ]
+
+[tool.ruff]
+# The vendored submodules carry their own lint configs; linting them here would
+# make this repo's hooks fail on upstream code after a submodule bump.
+extend-exclude = ["olmo-core", "olmo-eval"]

@@ -2,3 +2,7 @@
 	path = olmo-eval
 	url = ssh://git@github.com/allenai/olmo-eval.git
 	branch = jacksonp/ladder
+[submodule "olmo-core"]
+	path = olmo-core
+	url = ssh://git@github.com/jopetty/OLMo-core.git
+	branch = ppt
