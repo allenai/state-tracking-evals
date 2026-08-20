@@ -4,5 +4,5 @@
 	branch = jacksonp/ladder
 [submodule "olmo-core"]
 	path = olmo-core
-	url = ssh://git@github.com/jopetty/OLMo-core.git
-	branch = ppt
+	url = ssh://git@github.com/allenai/OLMo-core.git
+	branch = jacksonp/state-bench-dt
