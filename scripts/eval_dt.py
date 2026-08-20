@@ -77,6 +77,9 @@ TOKEN_STRATA = {
     "xl": (XL_TIERS, 1_048_576),
 }
 
+# Instances per tier used by --subsample, for quick passes over the full grid.
+SUBSAMPLE_LIMIT = 100
+
 BASE_HARNESS_OVERRIDES = [
     ("provider.num_instances", "{num_gpus}"),
     ("provider.kwargs.enforce_eager", "true"),
@@ -262,7 +265,15 @@ def parse_args() -> argparse.Namespace:
             "xl (512k and above). Defaults to normal."
         ),
     )
-    parser.add_argument(
+    limit_group = parser.add_mutually_exclusive_group()
+    limit_group.add_argument(
+        "--subsample",
+        dest="limit",
+        action="store_const",
+        const=SUBSAMPLE_LIMIT,
+        help=f"Shorthand for --limit {SUBSAMPLE_LIMIT}.",
+    )
+    limit_group.add_argument(
         "--limit",
         type=int,
         default=None,

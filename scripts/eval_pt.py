@@ -156,6 +156,9 @@ TOKEN_STRATA = {
     "xl": (XL_TIERS, 1_048_576),
 }
 
+# Instances per tier used by --subsample, for quick passes over the full grid.
+SUBSAMPLE_LIMIT = 100
+
 
 def experiment_name(model_path: str, stratum: str) -> str:
     """Build a deterministic Beaker experiment name for a model."""
@@ -284,7 +287,15 @@ def main():
             "256k) or xl (512k and above). Defaults to both."
         ),
     )
-    parser.add_argument(
+    limit_group = parser.add_mutually_exclusive_group()
+    limit_group.add_argument(
+        "--subsample",
+        dest="limit",
+        action="store_const",
+        const=SUBSAMPLE_LIMIT,
+        help=f"Shorthand for --limit {SUBSAMPLE_LIMIT}.",
+    )
+    limit_group.add_argument(
         "--limit",
         type=int,
         default=None,
