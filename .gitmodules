@@ -6,3 +6,7 @@
 	path = olmo-core
 	url = ssh://git@github.com/allenai/OLMo-core.git
 	branch = jacksonp/state-bench-dt
+[submodule "state-bench"]
+	path = state-bench
+	url = ssh://git@github.com/jopetty/state-bench.git
+	branch = main

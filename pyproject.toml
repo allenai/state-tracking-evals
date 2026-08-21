@@ -27,9 +27,13 @@ dependencies = [
 #     editable below, so this one pin controls both the local `olmo-eval` CLI and
 #     the eval jobs, which scripts/run_statebench_*.py launch with cwd set to the
 #     submodule.
-#   olmo-core  (tracks jopetty/OLMo-core ppt) -- NOT a dependency of this project:
-#     it caps Python at <3.12 and needs its own torch, so scripts/train_dt.sh runs
-#     it as its own uv project (Python 3.11) rather than from this environment.
+#   olmo-core  (tracks allenai/OLMo-core jacksonp/state-bench-dt) -- NOT a
+#     dependency of this project: it caps Python at <3.12 and needs its own torch,
+#     so scripts/train_dt.sh runs it as its own uv project (Python 3.11) rather
+#     than from this environment.
+#   state-bench  (tracks jopetty/state-bench main) -- NOT a dependency of this
+#     project: vendored so the data-generation side of the experiments lives
+#     alongside the training and eval submodules.
 [tool.uv.sources]
 olmo-eval = { path = "olmo-eval", editable = true }
 
@@ -43,4 +47,4 @@ dev = [
 [tool.ruff]
 # The vendored submodules carry their own lint configs; linting them here would
 # make this repo's hooks fail on upstream code after a submodule bump.
-extend-exclude = ["olmo-core", "olmo-eval"]
+extend-exclude = ["olmo-core", "olmo-eval", "state-bench"]
