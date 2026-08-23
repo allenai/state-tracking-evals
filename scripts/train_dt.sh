@@ -2,7 +2,14 @@
 #
 # Launch the full StateBench direct-training suite: {transformer-rope,
 # transformer-nope, hybrid, gdn-sdp, gdn-full} x {r-trivial, aperiodic,
-# periodic} at the 275M size (the only size this suite uses).
+# periodic, periodic-sens-shuffled, periodic-sens-curriculum} at the 275M
+# size (the only size this suite uses) -- 25 jobs per seed.
+#
+# state_bench.py's own `launch` expansion covers only the first three
+# distributions when --distribution is omitted; the two sensitivity-ordering
+# conditions must be selected explicitly, so this script launches them as
+# separate invocations. Passing --distribution restricts the suite to just
+# that condition, as before.
 #
 # Training runs out of the olmo-core submodule rather than this repo. Gantry
 # stamps each Beaker job with the git repo it was launched from, so the
@@ -45,9 +52,15 @@ fi
 
 n_seeds=1
 extra_args=()
+has_distribution=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --distribution | --distribution=*)
+            has_distribution=1
+            extra_args+=("$1")
+            shift
+            ;;
         --n_seeds)
             n_seeds="$2"
             shift 2
@@ -78,11 +91,23 @@ cd "$OLMO_CORE_ROOT"
 # inside the launcher, well after this point.
 echo "=== olmo-core @ $(git log -1 --format='%h %s') ==="
 
+# With no explicit --distribution, cover the full suite: the default
+# three-distribution expansion plus one invocation per sensitivity condition.
+launch_batches=("")
+if [[ "$has_distribution" -eq 0 ]]; then
+    launch_batches+=("periodic-sens-shuffled" "periodic-sens-curriculum")
+fi
+
 for ((seed = 0; seed < n_seeds; seed++)); do
-    if [[ "$n_seeds" -gt 1 ]]; then
-        echo "=== Launching StateBench suite for init-seed $seed ==="
-        uv run "$STATE_BENCH_PY" launch --size 275M --max-gpus 8 --init-seed "$seed" "${extra_args[@]+"${extra_args[@]}"}"
-    else
-        uv run "$STATE_BENCH_PY" launch --size 275M --max-gpus 8 "${extra_args[@]+"${extra_args[@]}"}"
-    fi
+    for distribution in "${launch_batches[@]}"; do
+        seed_args=()
+        [[ "$n_seeds" -gt 1 ]] && seed_args+=(--init-seed "$seed")
+        distribution_args=()
+        [[ -n "$distribution" ]] && distribution_args+=(--distribution "$distribution")
+        echo "=== Launching StateBench suite (init-seed $seed, distribution ${distribution:-default}) ==="
+        uv run "$STATE_BENCH_PY" launch --size 275M --max-gpus 8 \
+            "${seed_args[@]+"${seed_args[@]}"}" \
+            "${distribution_args[@]+"${distribution_args[@]}"}" \
+            "${extra_args[@]+"${extra_args[@]}"}"
+    done
 done
