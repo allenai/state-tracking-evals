@@ -90,11 +90,10 @@ Open items:
   yashassamaga/transformers@olmo-3.5-hybrid); install with
   `pip install 'transformers @ git+https://github.com/jopetty/transformers.git@olmo-3.5-hybrid-state-bench'`.
   Candidate PR back to yashassamaga when settled.
-- Known environment issue: fla 0.5.2 fails to import next to the fork's
-  transformers 5.0.0.dev0 (fla.layers/fla.models import transformers internals);
-  workaround is patching fla's _import_optional_public_module to swallow the
-  ImportError so fla.ops/fla.modules stay usable. Affects any env pairing the
-  fork with current fla, including Yashas's original convert_checkpoints.py flow.
-- Outstanding: GDN-variant logit-parity validation (blocked on the fla import fix);
+- Resolved non-issue: the suspected fla-vs-transformers-5 import conflict never
+  existed; fla was simply absent (conversion env installed without the [fla]
+  extra). Install conversion envs with `pip/uv pip install -e '.[fla]'`;
+  fla 0.5.2 coexists fine with the fork.
+- Outstanding: GDN-variant logit-parity validation (first post-fla-install sweep);
   check whether vLLM ships its own olmo3_5_hybrid impl with the same homogeneity
   assumptions before launching the olmo-eval matrix.
