@@ -1,0 +1,63 @@
+diff --git a/src/transformers/models/olmo3_5_hybrid/configuration_olmo3_5_hybrid.py b/src/transformers/models/olmo3_5_hybrid/configuration_olmo3_5_hybrid.py
+index 1254c6f..b13ca0e 100644
+--- a/src/transformers/models/olmo3_5_hybrid/configuration_olmo3_5_hybrid.py
++++ b/src/transformers/models/olmo3_5_hybrid/configuration_olmo3_5_hybrid.py
+@@ -181,10 +181,9 @@ class Olmo3_5HybridConfig(PreTrainedConfig):
+                 f"`layer_types` must have length num_hidden_layers={num_hidden_layers}, got {len(layer_types)}."
+             )
+ 
+-        if "linear_attention" not in layer_types:
+-            raise ValueError("OLMo3.5 Hybrid expects at least one 'linear_attention' layer.")
+-        if all(t == "linear_attention" for t in layer_types):
+-            raise ValueError("OLMo3.5 Hybrid expects at least one attention layer (full or sliding).")
++        # Homogeneous layer_types (all linear_attention, or all full/sliding attention) are
++        # allowed: the architecture degenerates cleanly to a pure linear-attention or pure
++        # transformer model, which is useful for controlled comparisons against true hybrids.
+         self.vocab_size = vocab_size
+         self.max_position_embeddings = max_position_embeddings
+         self.hidden_size = hidden_size
+diff --git a/src/transformers/models/olmo3_5_hybrid/modeling_olmo3_5_hybrid.py b/src/transformers/models/olmo3_5_hybrid/modeling_olmo3_5_hybrid.py
+index 33f5587..b640883 100644
+--- a/src/transformers/models/olmo3_5_hybrid/modeling_olmo3_5_hybrid.py
++++ b/src/transformers/models/olmo3_5_hybrid/modeling_olmo3_5_hybrid.py
+@@ -68,7 +68,11 @@ class Olmo3_5HybridDynamicCache:
+         super().__init__()
+         self.layer_types = config.layer_types
+         self.transformer_layers = [i for i, t in enumerate(config.layer_types) if t != "linear_attention"]
+-        self.last_linear_layer = len(self.layer_types) - 1 - self.layer_types[::-1].index("linear_attention")
++        self.last_linear_layer = (
++            len(self.layer_types) - 1 - self.layer_types[::-1].index("linear_attention")
++            if "linear_attention" in self.layer_types
++            else -1
++        )
+ 
+         self.conv_states_q = [None for _ in range(config.num_hidden_layers)]
+         self.conv_states_k = [None for _ in range(config.num_hidden_layers)]
+@@ -132,6 +136,9 @@ class Olmo3_5HybridDynamicCache:
+                 )
+ 
+     def get_seq_length(self, layer_idx: int | None = 0) -> int:
++        if not self.transformer_layers:
++            # Pure linear-attention model: no KV cache; sequence length is tracked elsewhere.
++            return 0
+         layer_idx = self.transformer_layers[0] if layer_idx not in self.transformer_layers else layer_idx
+         if len(self.key_cache) <= layer_idx or self.key_cache[layer_idx] is None:
+             return 0
+@@ -153,7 +160,7 @@ class Olmo3_5HybridDynamicCache:
+ 
+     @property
+     def has_previous_state(self):
+-        return self.conv_states_q[self.last_linear_layer] is not None
++        return self.last_linear_layer >= 0 and self.conv_states_q[self.last_linear_layer] is not None
+ 
+ 
+ class Olmo3_5HybridRMSNormGated(nn.Module):
+@@ -1121,7 +1128,7 @@ class Olmo3_5HybridModel(Olmo3_5HybridPreTrainedModel):
+         self.norm = Olmo3_5HybridRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+         self.rotary_emb = (
+             Olmo3_5HybridRotaryEmbedding(config=config)
+-            if getattr(config, "rope_theta", None) is not None
++            if (getattr(config, "rope_parameters", None) or {}).get("rope_theta") is not None
+             else None
+         )
+         self.embedding_norm = (
