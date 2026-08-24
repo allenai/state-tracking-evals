@@ -18,7 +18,7 @@ from fetch_results import main  # noqa: E402
 BEAKER = [
     {
         "workspace": "ai2/beyond-state",
-        "group": "jacksonp-state-bench-dt",
+        "group": "jacksonp-state-bench-dt-275m",
     },
     # {
     #     "workspace": "ai2/linear-rnns",

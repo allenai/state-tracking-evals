@@ -22,7 +22,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OLMO_EVAL_DIR = REPO_ROOT / "olmo-eval"
 
-GROUP = "jacksonp-state-bench-dt"
+GROUP = "jacksonp-state-bench-dt-275m"
 CLUSTER = "ai2/saturn"
 PRIORITY = "urgent"
 NUM_GPUS = 2
