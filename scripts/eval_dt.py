@@ -1,6 +1,16 @@
-"""Runs state-bench evals on directly-trained models."""
+"""Runs state-bench evals on directly-trained 275M-class models.
+
+Every 275M StateBench variant (the two transformers, the hybrid, and the two pure-GDN
+models) is saved in the HF ``olmo3_5_hybrid`` format, so all of them are served by the
+HF provider with the ``jopetty/transformers@olmo-3.5-hybrid-state-bench`` fork installed
+in the job (the fork supports the homogeneous layer_types the non-hybrid variants use).
+
+Checkpoints are discovered from the converted ``stepN-hf`` directories on weka, so this
+script must run somewhere with the weka checkpoint tree mounted.
+"""
 
 import argparse
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -18,40 +28,26 @@ NUM_GPUS = 2
 WORKSPACE = "ai2/beyond-state"
 BUDGET = "ai2/oe-other"
 
-CHECKPOINT_BASE = Path("/weka/oe-training-default/ai2-llm/model-ladders/state-bench/60M")
-MODEL_TYPES = ("transformer", "hybrid")
-DATASET_TYPES = ("r-trivial", "aperiodic", "periodic")
+CHECKPOINT_BASE = Path("/weka/oe-training-default/ai2-llm/model-ladders/state-bench/275M")
+MODEL_TYPES = ("transformer-rope", "transformer-nope", "hybrid", "gdn-sdp", "gdn-full")
+DATASET_TYPES = (
+    "r-trivial",
+    "aperiodic",
+    "periodic",
+    "periodic-sens-shuffled",
+    "periodic-sens-curriculum",
+)
 SEEDS = (0,)
 
 DATASET_DIRS = {
     "r-trivial": "integer-code--r-trivial",
     "aperiodic": "integer-code--aperiodic",
     "periodic": "integer-code--periodic",
+    "periodic-sens-shuffled": "integer-code--periodic--sens-shuffled",
+    "periodic-sens-curriculum": "integer-code--periodic--sens-curriculum",
 }
 
-CHECKPOINT_STEPS = {
-    ("hybrid", "r-trivial"): (0, 2034, 2260, 4000, 4294, 4521),
-    ("hybrid", "aperiodic"): (0, 2034, 2260, 4000, 4294, 4521),
-    ("hybrid", "periodic"): (0, 2034, 2260, 4000, 4294, 4521),
-    ("transformer", "r-trivial"): (0, 1971, 2190, 4000, 4161, 4381),
-    ("transformer", "aperiodic"): (0, 1971, 2190, 4000, 4161, 4381),
-    ("transformer", "periodic"): (0, 1971, 2190, 4000, 4161, 4381),
-}
-
-MODEL_ROOTS = {
-    (model_type, dataset_type, seed): CHECKPOINT_BASE
-    / model_type
-    / DATASET_DIRS[dataset_type]
-    / "Cx1"
-    / f"init_seed{seed}"
-    for model_type, dataset_type in CHECKPOINT_STEPS
-    for seed in SEEDS
-}
-
-CHECKPOINTS = {
-    model: {step: model_root / f"step{step}-hf" for step in CHECKPOINT_STEPS[model[:2]]}
-    for model, model_root in MODEL_ROOTS.items()
-}
+_HF_STEP_DIR_RE = re.compile(r"^step(\d+)-hf$")
 
 OLMO_3_7B_BASE_ID = "allenai/Olmo-3-1025-7B"
 # StateBench context tiers, ascending; each tier's name is its upper token bound.
@@ -71,7 +67,7 @@ NORMAL_TIERS = (
 XL_TIERS = ("tokens_512k", "tokens_1m")
 
 # --strata selects tiers; each tier still launches as its own job so every one
-# starts with a fresh vLLM process and CUDA allocator state.
+# starts with a fresh process and CUDA allocator state.
 TOKEN_STRATA = {
     "normal": NORMAL_TIERS,
     "xl": XL_TIERS,
@@ -79,8 +75,6 @@ TOKEN_STRATA = {
 
 # Nominal context ceiling per tier. Measured prompts reach only 88-94% of these,
 # so a tier's window needs room for the scored continuation and nothing more.
-# Sizing per tier rather than per band keeps the KV cache off the memory that
-# full-prompt logprob scoring needs for its logits.
 TIER_CONTEXT_CEILING = {
     "tokens_under_2k": 2_048,
     "tokens_4k": 4_096,
@@ -95,18 +89,8 @@ TIER_CONTEXT_CEILING = {
 }
 CONTINUATION_HEADROOM_TOKENS = 2_048
 
-# StateBench scores full-prompt logprobs, so every prefill chunk materializes
-# full-vocabulary logits on top of an already-allocated KV cache. These leave
-# headroom for those temporaries and cap the per-chunk peak. vLLM only: the HF
-# provider ignores gpu_memory_utilization and rejects the other engine kwargs.
-STATE_BENCH_VLLM_OVERRIDES = [
-    ("provider.kwargs.gpu_memory_utilization", "0.75"),
-    ("provider.kwargs.max_num_batched_tokens", "8192"),
-    ("provider.kwargs.max_num_seqs", "16"),
-]
-# Harness-level, so it applies whichever provider serves the model. The default
-# harness batches at chunk_size=64, which is far more scored sequences in flight
-# than a long-context logprob pass can hold.
+# The default harness batches at chunk_size=64, which is far more scored
+# sequences in flight than a long-context logprob pass can hold.
 BATCH_CHUNK_SIZE = 8
 # Fragmentation across chunks is what usually turns a tight run into an OOM.
 ALLOCATOR_ENV = "PYTORCH_ALLOC_CONF=expandable_segments:True"
@@ -119,42 +103,22 @@ def max_model_len_for(tier: str) -> int:
     """Context window for one tier: its ceiling plus room for continuations."""
     return TIER_CONTEXT_CEILING[tier] + CONTINUATION_HEADROOM_TOKENS
 
-BASE_HARNESS_OVERRIDES = [
-    ("provider.num_instances", "{num_gpus}"),
-    ("provider.kwargs.enforce_eager", "true"),
-    ("provider.kwargs.compilation_config", '{"custom_ops":["-rms_norm"]}'),
-    ("provider.add_bos_token", "false"),
-    ("provider.prompt_logprobs", "1"),
-    ("provider.logprob_temperature", "1.0"),
-    ("provider.completion_use_prompt_token_ids", "true"),
-    ("provider.completion_client_side_stop_trim", "true"),
-    ("provider.completion_sentencepiece_cleanup", "true"),
-    (
-        "provider.dependencies",
-        "[transformers @ git+https://github.com/yashassamaga/transformers.git@hybrid-small-suite]",
-    ),
-    ("provider.tokenizer", OLMO_3_7B_BASE_ID),
-]
 
-TRANSFORMER_HARNESS_OVERRIDES = [
-    *BASE_HARNESS_OVERRIDES,
-    ("provider.trust_remote_code", "true"),
-    ("provider.kwargs.hf_overrides", '{"architectures":["TransformersForCausalLM"]}'),
-]
-
-HYBRID_HARNESS_OVERRIDES = [
+# All 275M variants are olmo3_5_hybrid checkpoints, served by the HF provider with the
+# fork that supports homogeneous layer_types (pure-transformer / pure-GDN variants).
+HARNESS_OVERRIDES = [
     ("provider.num_instances", "{num_gpus}"),
     ("provider.kind", "hf"),
     ("provider.trust_remote_code", "true"),
     ("provider.dtype", "bfloat16"),
     (
         "provider.dependencies",
-        "[transformers @ git+https://github.com/yashassamaga/transformers.git@hybrid-small-suite]",
+        "[transformers @ git+https://github.com/jopetty/transformers.git@olmo-3.5-hybrid-state-bench]",
     ),
     ("provider.tokenizer", OLMO_3_7B_BASE_ID),
 ]
 
-HYBRID_IMAGE = "yashasbls/olmo-eval-vllm-g79d31a3f9-tch2100cu128-2026-05-23"
+EVAL_IMAGE = "yashasbls/olmo-eval-vllm-g79d31a3f9-tch2100cu128-2026-05-23"
 SECRET_ENVS = ["JACKSONP_HF_TOKEN:HF_TOKEN", "jacksonp_GITHUB_TOKEN:GITHUB_TOKEN"]
 
 
@@ -162,9 +126,24 @@ def get_model_short_name(model_path: str) -> str:
     return "_".join(model_path.rstrip("/").split("/")[-5:]).lower().replace(":", "_")
 
 
+def model_root(model_type: str, dataset_type: str, seed: int) -> Path:
+    return CHECKPOINT_BASE / model_type / DATASET_DIRS[dataset_type] / "Cx1" / f"init_seed{seed}"
+
+
+def discover_checkpoints(root: Path) -> dict[int, Path]:
+    """Map step -> converted checkpoint dir for every ``stepN-hf`` under a run root."""
+    if not root.is_dir():
+        return {}
+    checkpoints: dict[int, Path] = {}
+    for child in root.iterdir():
+        match = _HF_STEP_DIR_RE.match(child.name)
+        if match and child.is_dir():
+            checkpoints[int(match.group(1))] = child
+    return checkpoints
+
+
 def build_command(
     model_path: str,
-    model_type: str,
     tier: str,
     limit: int | None = None,
     save_requests: bool = True,
@@ -186,12 +165,7 @@ def build_command(
         "-n",
         f"{get_model_short_name(model_path)}-state_bench_integer_code_{tier}",
     ]
-    harness_overrides = (
-        HYBRID_HARNESS_OVERRIDES if model_type == "hybrid" else TRANSFORMER_HARNESS_OVERRIDES
-    )
-    if model_type != "hybrid":
-        harness_overrides = [*harness_overrides, *STATE_BENCH_VLLM_OVERRIDES]
-    for key, value in harness_overrides:
+    for key, value in HARNESS_OVERRIDES:
         cmd.extend(["-o", f"{key}={value.replace('{num_gpus}', str(num_gpus))}"])
     cmd.extend(["-o", f"provider.max_model_len={max_model_len_for(tier)}"])
     cmd.extend(["-o", f"batching.chunk_size={BATCH_CHUNK_SIZE}"])
@@ -218,41 +192,29 @@ def build_command(
             "--budget",
             BUDGET,
             "--inspect",
+            "--image",
+            EVAL_IMAGE,
         ]
     )
-    if model_type == "hybrid":
-        cmd.extend(["--image", HYBRID_IMAGE])
     for secret_env in SECRET_ENVS:
         cmd.extend(["--secret-env", secret_env])
     return [*cmd, "--no-follow", "-y"]
 
 
 def resolve_checkpoints(
-    model_type: str,
-    dataset_type: str,
-    seed: int,
+    available: dict[int, Path],
     requested_checkpoints: list[int] | None,
-    final: bool = False,
+    final: bool,
 ) -> list[int]:
-    model = (model_type, dataset_type, seed)
-    if model not in CHECKPOINTS:
-        available = ", ".join(
-            f"{available_type}/{available_dataset}/seed{available_seed}"
-            for available_type, available_dataset, available_seed in CHECKPOINTS
-        )
-        raise ValueError(
-            f"No HF checkpoints are configured for {model_type}/{dataset_type}/seed{seed}. "
-            f"Available combinations: {available}"
-        )
     if requested_checkpoints is not None:
-        invalid = sorted(set(requested_checkpoints) - set(CHECKPOINTS[model]))
+        invalid = sorted(set(requested_checkpoints) - set(available))
         if invalid:
-            valid = ", ".join(str(step) for step in CHECKPOINTS[model])
-            raise ValueError(f"Invalid checkpoint(s) for {model}: {invalid}. Valid steps: {valid}")
-        return requested_checkpoints
+            valid = ", ".join(str(step) for step in sorted(available))
+            raise ValueError(f"Invalid checkpoint(s): {invalid}. Converted steps: {valid}")
+        return sorted(requested_checkpoints)
     if final:
-        return [max(CHECKPOINTS[model])]
-    return list(CHECKPOINTS[model])
+        return [max(available)]
+    return sorted(available)
 
 
 def parse_args() -> argparse.Namespace:
@@ -291,7 +253,7 @@ def parse_args() -> argparse.Namespace:
         "--all-checkpoints",
         dest="final",
         action="store_false",
-        help="Evaluate every configured checkpoint.",
+        help="Evaluate every converted checkpoint instead of only the latest.",
     )
     checkpoint_group.add_argument(
         "--final", dest="final", action="store_true", help=argparse.SUPPRESS
@@ -353,19 +315,26 @@ def resolve_tiers(requested_tiers: list[str] | None, strata: list[str]) -> list[
 
 def main() -> None:
     args = parse_args()
+    if not CHECKPOINT_BASE.is_dir():
+        raise SystemExit(
+            f"Checkpoint base not found: {CHECKPOINT_BASE}\n"
+            "Run this script somewhere with the weka checkpoint tree mounted."
+        )
     launched = 0
+    skipped: list[str] = []
     for model_type in args.model_type:
         for dataset_type in args.dataset_type:
-            for tier in resolve_tiers(args.tiers, args.strata):
-                for seed in args.seed:
-                    checkpoints = resolve_checkpoints(
-                        model_type, dataset_type, seed, args.checkpoints, args.final
-                    )
+            for seed in args.seed:
+                root = model_root(model_type, dataset_type, seed)
+                available = discover_checkpoints(root)
+                if not available:
+                    skipped.append(f"{model_type}/{dataset_type}/seed{seed} (no stepN-hf in {root})")
+                    continue
+                checkpoints = resolve_checkpoints(available, args.checkpoints, args.final)
+                for tier in resolve_tiers(args.tiers, args.strata):
                     for checkpoint in checkpoints:
-                        model_path = str(CHECKPOINTS[(model_type, dataset_type, seed)][checkpoint])
                         command = build_command(
-                            model_path,
-                            model_type,
+                            str(available[checkpoint]),
                             tier,
                             limit=args.limit,
                             save_requests=args.save_requests,
@@ -379,6 +348,10 @@ def main() -> None:
                         else:
                             subprocess.run(command, check=True, cwd=OLMO_EVAL_DIR)
                         launched += 1
+    if skipped:
+        print("\nSkipped (no converted checkpoints yet):")
+        for entry in skipped:
+            print(f"  {entry}")
     print(f"\n{'Would launch' if args.dry_run else 'Launched'} {launched} job(s).")
 
 
