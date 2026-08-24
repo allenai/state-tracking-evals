@@ -79,3 +79,22 @@ before the GDN reruns finish.
 Open items:
 - Confirm suffix `-hf` (established convention) over the requested prefix.
 - olmo-eval side needs the transformers fork installed (see run_evals.py:98).
+
+## Status updates (2026-08-24)
+
+- Implemented: requires_hybrid_hf_format routing, homogeneous-hybrid config support,
+  batch converter (olmo-core jacksonp/state-bench-dt).
+- The transformers fork's guards rejected homogeneous layer_types, and rope
+  standardization silently dropped RoPE for full-attention layers. Fixed on
+  `jopetty/transformers@olmo-3.5-hybrid-state-bench` (forked from
+  yashassamaga/transformers@olmo-3.5-hybrid); install with
+  `pip install 'transformers @ git+https://github.com/jopetty/transformers.git@olmo-3.5-hybrid-state-bench'`.
+  Candidate PR back to yashassamaga when settled.
+- Known environment issue: fla 0.5.2 fails to import next to the fork's
+  transformers 5.0.0.dev0 (fla.layers/fla.models import transformers internals);
+  workaround is patching fla's _import_optional_public_module to swallow the
+  ImportError so fla.ops/fla.modules stay usable. Affects any env pairing the
+  fork with current fla, including Yashas's original convert_checkpoints.py flow.
+- Outstanding: GDN-variant logit-parity validation (blocked on the fla import fix);
+  check whether vLLM ships its own olmo3_5_hybrid impl with the same homogeneity
+  assumptions before launching the olmo-eval matrix.
