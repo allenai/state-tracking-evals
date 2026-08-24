@@ -5,12 +5,13 @@ models) is saved in the HF ``olmo3_5_hybrid`` format, so all of them are served 
 HF provider with the ``jopetty/transformers@olmo-3.5-hybrid-state-bench`` fork installed
 in the job (the fork supports the homogeneous layer_types the non-hybrid variants use).
 
-Checkpoints are discovered from the converted ``stepN-hf`` directories on weka, so this
-script must run somewhere with the weka checkpoint tree mounted.
+Checkpoint steps are hardcoded per model type (they depend only on the model's
+non-embedding parameter count via the WSDS Chinchilla schedule, not on the training
+distribution), so this script runs fine from a laptop without weka access; only the
+launched jobs read the checkpoint paths.
 """
 
 import argparse
-import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -47,7 +48,18 @@ DATASET_DIRS = {
     "periodic-sens-curriculum": "integer-code--periodic--sens-curriculum",
 }
 
-_HF_STEP_DIR_RE = re.compile(r"^step(\d+)-hf$")
+# Fixed WSDS checkpoint steps per model type: [period-1 pre-decay, period-1 end,
+# period-2 pre-decay, period-2 end(final)], computed from olmo-core's
+# RunConfigurator.configure_checkpoint_intervals with each variant's non-embedding
+# parameter count and the launched jobs' 524288-token global batch. Final steps
+# verified against the trained runs (7451 / 8059 / 8211).
+CHECKPOINT_STEPS = {
+    "transformer-rope": (3353, 3726, 7078, 7451),
+    "transformer-nope": (3353, 3726, 7078, 7451),
+    "hybrid": (3627, 4030, 7656, 8059),
+    "gdn-sdp": (3695, 4106, 7800, 8211),
+    "gdn-full": (3695, 4106, 7800, 8211),
+}
 
 OLMO_3_7B_BASE_ID = "allenai/Olmo-3-1025-7B"
 # StateBench context tiers, ascending; each tier's name is its upper token bound.
@@ -130,16 +142,10 @@ def model_root(model_type: str, dataset_type: str, seed: int) -> Path:
     return CHECKPOINT_BASE / model_type / DATASET_DIRS[dataset_type] / "Cx1" / f"init_seed{seed}"
 
 
-def discover_checkpoints(root: Path) -> dict[int, Path]:
-    """Map step -> converted checkpoint dir for every ``stepN-hf`` under a run root."""
-    if not root.is_dir():
-        return {}
-    checkpoints: dict[int, Path] = {}
-    for child in root.iterdir():
-        match = _HF_STEP_DIR_RE.match(child.name)
-        if match and child.is_dir():
-            checkpoints[int(match.group(1))] = child
-    return checkpoints
+def checkpoint_paths(model_type: str, dataset_type: str, seed: int) -> dict[int, Path]:
+    """Map step -> converted checkpoint dir for one run, from the fixed step tables."""
+    root = model_root(model_type, dataset_type, seed)
+    return {step: root / f"step{step}-hf" for step in CHECKPOINT_STEPS[model_type]}
 
 
 def build_command(
@@ -210,7 +216,7 @@ def resolve_checkpoints(
         invalid = sorted(set(requested_checkpoints) - set(available))
         if invalid:
             valid = ", ".join(str(step) for step in sorted(available))
-            raise ValueError(f"Invalid checkpoint(s): {invalid}. Converted steps: {valid}")
+            raise ValueError(f"Invalid checkpoint(s): {invalid}. Configured steps: {valid}")
         return sorted(requested_checkpoints)
     if final:
         return [max(available)]
@@ -315,21 +321,11 @@ def resolve_tiers(requested_tiers: list[str] | None, strata: list[str]) -> list[
 
 def main() -> None:
     args = parse_args()
-    if not CHECKPOINT_BASE.is_dir():
-        raise SystemExit(
-            f"Checkpoint base not found: {CHECKPOINT_BASE}\n"
-            "Run this script somewhere with the weka checkpoint tree mounted."
-        )
     launched = 0
-    skipped: list[str] = []
     for model_type in args.model_type:
         for dataset_type in args.dataset_type:
             for seed in args.seed:
-                root = model_root(model_type, dataset_type, seed)
-                available = discover_checkpoints(root)
-                if not available:
-                    skipped.append(f"{model_type}/{dataset_type}/seed{seed} (no stepN-hf in {root})")
-                    continue
+                available = checkpoint_paths(model_type, dataset_type, seed)
                 checkpoints = resolve_checkpoints(available, args.checkpoints, args.final)
                 for tier in resolve_tiers(args.tiers, args.strata):
                     for checkpoint in checkpoints:
@@ -348,10 +344,6 @@ def main() -> None:
                         else:
                             subprocess.run(command, check=True, cwd=OLMO_EVAL_DIR)
                         launched += 1
-    if skipped:
-        print("\nSkipped (no converted checkpoints yet):")
-        for entry in skipped:
-            print(f"  {entry}")
     print(f"\n{'Would launch' if args.dry_run else 'Launched'} {launched} job(s).")
 
 
