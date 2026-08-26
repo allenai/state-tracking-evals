@@ -372,9 +372,13 @@ ARCHITECTURE_PALETTE_SCHEMES: dict[str, str] = {
     "GDN": "Blues",
 }
 
-# Shade steps in the model-size ramps (the four sizes plotted in the
-# long-context notebook: 275M, 800M, 1.4B, 7B).
+# Shade steps in the model-size ramps (the four sizes plotted across the
+# notebooks: 275M, 800M, 1.4B, 7B).
 MODEL_SIZE_RAMP_STEPS: int = 4
+
+# Model sizes ordered darkest shade first: larger models take darker shades and
+# the smallest (275M) models take the lightest.
+MODEL_SIZE_SHADE_ORDER: tuple[str, ...] = ("7B", "1.4B", "800M", "275M")
 
 
 def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> list[Color]:
@@ -386,21 +390,52 @@ def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> 
     )
 
 
-def small_model_color(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> Color:
-    """Shared shade for the smallest models across notebooks.
+def model_size_color(architecture: str, size: str = "275M") -> Color:
+    """Color for one architecture at one model size: hue = family, shade = size."""
+    if size not in MODEL_SIZE_SHADE_ORDER:
+        raise KeyError(f"Unknown model size {size!r}; expected one of {MODEL_SIZE_SHADE_ORDER}")
+    ramp = architecture_ramp(architecture, len(MODEL_SIZE_SHADE_ORDER))
+    return ramp[MODEL_SIZE_SHADE_ORDER.index(size)]
 
-    The directly-trained 60M models and the long-context 275M models use this
-    same color: the blend of the ramp's second- and third-lightest steps,
-    saturated enough to read on white while staying between the mid-size
-    shades rather than colliding with either.
-    """
-    ramp = architecture_ramp(architecture, steps)
-    third_lightest, second_lightest = ramp[-3], ramp[-2]
-    return (
-        (second_lightest[0] + third_lightest[0]) / 2.0,
-        (second_lightest[1] + third_lightest[1]) / 2.0,
-        (second_lightest[2] + third_lightest[2]) / 2.0,
-    )
+
+# The five directly-trained StateBench 275M model variants. Hue encodes the model
+# family (Transformer=red, Hybrid=purple, GDN=blue), shade the parameter count
+# (275M = lightest), and marker the within-family variant: circles for the
+# canonical variant (RoPE positions; negative eigenvalues allowed), squares for
+# the restricted one (NoPE; SDP).
+STATE_BENCH_MODEL_ORDER: tuple[str, ...] = (
+    "transformer-rope",
+    "transformer-nope",
+    "hybrid",
+    "gdn-sdp",
+    "gdn-full",
+)
+STATE_BENCH_MODEL_FAMILIES: dict[str, str] = {
+    "transformer-rope": "Transformer",
+    "transformer-nope": "Transformer",
+    "hybrid": "Hybrid",
+    "gdn-sdp": "GDN",
+    "gdn-full": "GDN",
+}
+STATE_BENCH_MODEL_MARKERS: dict[str, str] = {
+    "transformer-rope": "o",
+    "transformer-nope": "s",
+    "hybrid": "o",
+    "gdn-sdp": "s",
+    "gdn-full": "o",
+}
+STATE_BENCH_MODEL_LABELS: dict[str, str] = {
+    "transformer-rope": "Transformer (RoPE)",
+    "transformer-nope": "Transformer (NoPE)",
+    "hybrid": "Hybrid",
+    "gdn-sdp": "GDN (SDP)",
+    "gdn-full": "GDN (full)",
+}
+
+
+def state_bench_model_color(model_type: str, size: str = "275M") -> Color:
+    """Color for one StateBench model variant: family hue at the given size shade."""
+    return model_size_color(STATE_BENCH_MODEL_FAMILIES[model_type], size)
 
 
 def set_dataset_palette(family: str, color: PaletteSpec, datasets: list[str]) -> Palette:
@@ -536,8 +571,14 @@ __all__ = [
     "PALETTES",
     "ARCHITECTURE_PALETTE_SCHEMES",
     "MODEL_SIZE_RAMP_STEPS",
+    "MODEL_SIZE_SHADE_ORDER",
+    "STATE_BENCH_MODEL_ORDER",
+    "STATE_BENCH_MODEL_FAMILIES",
+    "STATE_BENCH_MODEL_MARKERS",
+    "STATE_BENCH_MODEL_LABELS",
     "architecture_ramp",
-    "small_model_color",
+    "model_size_color",
+    "state_bench_model_color",
     "set_palette",
     "update_palette",
     "set_model_palette",
