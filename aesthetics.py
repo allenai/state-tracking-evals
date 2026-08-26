@@ -380,6 +380,17 @@ MODEL_SIZE_RAMP_STEPS: int = 4
 # the smallest (275M) models take the lightest.
 MODEL_SIZE_SHADE_ORDER: tuple[str, ...] = ("7B", "1.4B", "800M", "275M")
 
+# Fractional positions on the darkest-to-lightest ramp. The floor is raised:
+# the sizes only span the darker half of the ramp, so even the smallest (275M)
+# models keep a saturated tone that reads well on white — 275M lands exactly on
+# the blend of the ramp's second- and third-lightest steps.
+_MODEL_SIZE_RAMP_POSITIONS: dict[str, float] = {
+    "7B": 0.0,
+    "1.4B": 0.5,
+    "800M": 1.0,
+    "275M": 1.5,
+}
+
 
 def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> list[Color]:
     """Darkest-to-lightest shade ramp for one architecture's color scheme."""
@@ -392,10 +403,19 @@ def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> 
 
 def model_size_color(architecture: str, size: str = "275M") -> Color:
     """Color for one architecture at one model size: hue = family, shade = size."""
-    if size not in MODEL_SIZE_SHADE_ORDER:
+    if size not in _MODEL_SIZE_RAMP_POSITIONS:
         raise KeyError(f"Unknown model size {size!r}; expected one of {MODEL_SIZE_SHADE_ORDER}")
-    ramp = architecture_ramp(architecture, len(MODEL_SIZE_SHADE_ORDER))
-    return ramp[MODEL_SIZE_SHADE_ORDER.index(size)]
+    ramp = architecture_ramp(architecture, MODEL_SIZE_RAMP_STEPS)
+    position = _MODEL_SIZE_RAMP_POSITIONS[size]
+    lower, fraction = int(position), position - int(position)
+    if fraction == 0.0:
+        return ramp[lower]
+    upper = ramp[lower + 1]
+    return (
+        ramp[lower][0] * (1.0 - fraction) + upper[0] * fraction,
+        ramp[lower][1] * (1.0 - fraction) + upper[1] * fraction,
+        ramp[lower][2] * (1.0 - fraction) + upper[2] * fraction,
+    )
 
 
 # The five directly-trained StateBench 275M model variants. Hue encodes the model
