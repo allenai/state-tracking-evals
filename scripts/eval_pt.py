@@ -14,7 +14,15 @@ OLMO_EVAL_DIR = REPO_ROOT / "olmo-eval"
 
 GROUP = "jacksonp-state-bench-pt"
 DEFAULT_CLUSTER = "ai2/saturn"
+# Default GPUs per job when --gpus is not given: the 275m-class suite
+# checkpoints fit comfortably on 2; everything larger (and all external
+# baselines) gets 4.
 NUM_GPUS = 4
+SMALL_MODEL_GPUS = 2
+
+
+def default_gpus_for_size(size: str) -> int:
+    return SMALL_MODEL_GPUS if size.startswith("275m") else NUM_GPUS
 WORKSPACE = "ai2/beyond-state"
 BUDGET = "ai2/oe-other"
 # IMAGE = "yashasbls/olmo-eval-vllm-g79d31a3f9-tch2100cu128-2026-05-23"
@@ -288,7 +296,15 @@ def main():
     parser.add_argument(
         "--group", type=str, default=GROUP, help="Beaker workgroup for launched jobs."
     )
-    parser.add_argument("--gpus", type=int, default=NUM_GPUS, help="Number of GPUs per job.")
+    parser.add_argument(
+        "--gpus",
+        type=int,
+        default=None,
+        help=(
+            "Number of GPUs per job. Defaults per model: 2 for 275m-class suite "
+            "checkpoints, 4 for larger sizes, baselines, and --model targets."
+        ),
+    )
     parser.add_argument(
         "--model",
         type=str,
@@ -369,7 +385,6 @@ def main():
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    num_gpus = args.gpus
     group = args.group
 
     plugins_ref = args.plugins_ref or DEFAULT_PLUGINS_REF
@@ -381,6 +396,7 @@ def main():
         *,
         label,
         tier,
+        num_gpus,
     ):
         """Launch one StateBench context tier for a model."""
         nonlocal launched
@@ -406,12 +422,12 @@ def main():
 
     targets = []
     if args.model:
-        targets.append((args.model, "custom"))
+        targets.append((args.model, "custom", NUM_GPUS))
     elif args.baselines:
         for key in args.baselines:
             spec = BASELINES[key]
             hf = spec["hf"]
-            targets.append((hf, f"baseline {key} ({hf})"))
+            targets.append((hf, f"baseline {key} ({hf})", NUM_GPUS))
     else:
         for stage in args.stages:
             checkpoints = all_stages[stage]
@@ -421,14 +437,17 @@ def main():
                     continue
                 for model_path in checkpoints[size]:
                     short_name = model_path.rstrip("/").split("/")[-1]
-                    targets.append((model_path, f"{stage}/{size}/{short_name}"))
+                    targets.append(
+                        (model_path, f"{stage}/{size}/{short_name}", default_gpus_for_size(size))
+                    )
 
     for tier in resolve_tiers(args.tiers, args.strata):
-        for model_path, label in targets:
+        for model_path, label, target_gpus in targets:
             launch_task(
                 model_path,
                 label=label,
                 tier=tier,
+                num_gpus=args.gpus if args.gpus is not None else target_gpus,
             )
 
     print(f"\n{'Would launch' if args.dry_run else 'Launched'} {launched} job(s).")
