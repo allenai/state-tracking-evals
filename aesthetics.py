@@ -366,96 +366,151 @@ def update_model_palette(family: str, color: PaletteSpec, models: list[str]) -> 
 
 # Canonical hue assignment for the state-bench model architectures, shared by
 # the analysis notebooks so the same architecture is always the same color.
-ARCHITECTURE_PALETTE_SCHEMES: dict[str, str] = {
-    "Transformer": "Reds",
-    "Qwen": "Greens",
-    "Hybrid": "Purples",
-    "GDN": "Blues",
+# Each anchor is the darkest (largest-model) tone of its family's size ramp;
+# the three anchors are perceptually lightness-matched (Oklab L ~= 0.41), so
+# same-size models read at the same lightness across families and only the hue
+# separates them.
+ARCHITECTURE_COLOR_ANCHORS: dict[str, str] = {
+    "Transformer": "#8F0000",
+    "Qwen": "#2E6B00",
+    "Hybrid": "#70008F",
+    "GDN": "#004A8F",
 }
 
-# Shade steps in the model-size ramps (the four sizes plotted across the
-# notebooks: 275M, 800M, 1.4B, 7B).
-MODEL_SIZE_RAMP_STEPS: int = 4
+
+def _srgb_to_oklch(color: Color) -> tuple[float, float, float]:
+    def to_linear(channel: float) -> float:
+        return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (to_linear(channel) for channel in color)
+    lms_l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1.0 / 3.0)
+    lms_m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1.0 / 3.0)
+    lms_s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1.0 / 3.0)
+    lightness = 0.2104542553 * lms_l + 0.7936177850 * lms_m - 0.0040720468 * lms_s
+    a = 1.9779984951 * lms_l - 2.4285922050 * lms_m + 0.4505937099 * lms_s
+    b_axis = 0.0259040371 * lms_l + 0.7827717662 * lms_m - 0.8086757660 * lms_s
+    return lightness, math.hypot(a, b_axis), math.atan2(b_axis, a)
+
+
+def _oklch_to_srgb(lightness: float, chroma: float, hue: float) -> Color | None:
+    """Convert Oklch to sRGB, or ``None`` when the color falls outside the gamut."""
+    a, b_axis = chroma * math.cos(hue), chroma * math.sin(hue)
+    lms_l = (lightness + 0.3963377774 * a + 0.2158037573 * b_axis) ** 3
+    lms_m = (lightness - 0.1055613458 * a - 0.0638541728 * b_axis) ** 3
+    lms_s = (lightness - 0.0894841775 * a - 1.2914855480 * b_axis) ** 3
+    linear = (
+        4.0767416621 * lms_l - 3.3077115913 * lms_m + 0.2309699292 * lms_s,
+        -1.2684380046 * lms_l + 2.6097574011 * lms_m - 0.3413193965 * lms_s,
+        -0.0041960863 * lms_l - 0.7034186147 * lms_m + 1.7076147010 * lms_s,
+    )
+    if any(channel < -1e-4 or channel > 1.0 + 1e-4 for channel in linear):
+        return None
+
+    def to_srgb(channel: float) -> float:
+        channel = min(max(channel, 0.0), 1.0)
+        return 12.92 * channel if channel <= 0.0031308 else 1.055 * channel ** (1 / 2.4) - 0.055
+
+    return cast(Color, tuple(to_srgb(channel) for channel in linear))
+
+
+def _oklch_color(lightness: float, chroma: float, hue: float) -> Color:
+    """Oklch color as sRGB, reducing chroma just enough to stay in gamut."""
+    color = _oklch_to_srgb(lightness, chroma, hue)
+    if color is not None:
+        return color
+    low, high = 0.0, chroma
+    for _ in range(24):
+        mid = (low + high) / 2.0
+        if _oklch_to_srgb(lightness, mid, hue) is None:
+            high = mid
+        else:
+            low = mid
+    return cast(Color, _oklch_to_srgb(lightness, low, hue))
+
+
+# The size ramp's lightness schedule, shared by every architecture so that
+# same-size models match in lightness. 275M is the light lower bound and 8B the
+# dark upper bound (the anchor tone); lightness interpolates in log parameter
+# count between them. Chroma eases toward the light end so small-model tints
+# stay soft rather than neon.
+_MODEL_SIZE_RAMP_BOUNDS_MILLIONS: tuple[float, float] = (275.0, 8_000.0)
+_MODEL_SIZE_LIGHTNESS_RANGE: tuple[float, float] = (0.72, 0.41)
+_MODEL_SIZE_CHROMA_SCALE_RANGE: tuple[float, float] = (0.75, 1.0)
 
 # Model sizes ordered darkest shade first: larger models take darker shades and
 # the smallest (275M) models take the lightest.
 MODEL_SIZE_SHADE_ORDER: tuple[str, ...] = ("7B", "1.4B", "800M", "275M")
 
-# Fractional positions on the darkest-to-lightest ramp. The floor is raised:
-# the sizes only span the darker half of the ramp, so even the smallest (275M)
-# models keep a saturated tone that reads well on white — 275M lands exactly on
-# the blend of the ramp's second- and third-lightest steps.
-_MODEL_SIZE_RAMP_POSITIONS: dict[str, float] = {
-    "7B": 0.0,
-    "1.4B": 0.5,
-    "800M": 1.0,
-    "275M": 1.5,
+_MODEL_SIZE_MILLIONS: dict[str, float] = {
+    "275M": 275.0,
+    "800M": 800.0,
+    "1.4B": 1_400.0,
+    "2.7B": 2_700.0,
+    "7B": 7_000.0,
+    "8B": 8_000.0,
 }
 
+# Shade steps in :func:`architecture_ramp` (the four sizes plotted across the
+# notebooks: 275M, 800M, 1.4B, 7B).
+MODEL_SIZE_RAMP_STEPS: int = 4
 
-def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> list[Color]:
-    """Darkest-to-lightest shade ramp for one architecture's color scheme."""
-    scheme = ARCHITECTURE_PALETTE_SCHEMES[architecture]
-    return sorted(
-        (_to_rgb_tuple(rgb) for rgb in sns.color_palette(scheme, n_colors=steps + 2)[1:-1]),
-        key=_relative_luminance,
+
+def _anchor_oklch(architecture: str) -> tuple[float, float, float]:
+    try:
+        anchor = ARCHITECTURE_COLOR_ANCHORS[architecture]
+    except KeyError:
+        raise KeyError(
+            f"No color anchor for architecture {architecture!r}; "
+            f"expected one of {sorted(ARCHITECTURE_COLOR_ANCHORS)}"
+        ) from None
+    return _srgb_to_oklch(_to_rgb_tuple(anchor))
+
+
+def model_size_color_millions(architecture: str, size_millions: float) -> Color:
+    """Color for one architecture at an arbitrary parameter count.
+
+    Hue and chroma come from the family's anchor color; lightness follows a
+    log-size schedule shared by every family, so same-size models across
+    families sit at the same perceptual lightness. Sizes below 275M clamp to
+    the light bound and sizes above 8B to the anchor tone.
+    """
+    if size_millions <= 0:
+        raise ValueError(f"size_millions must be positive, got {size_millions!r}")
+    low_millions, high_millions = _MODEL_SIZE_RAMP_BOUNDS_MILLIONS
+    fraction = (math.log(float(size_millions)) - math.log(low_millions)) / (
+        math.log(high_millions) - math.log(low_millions)
     )
-
-
-# Anchor parameter counts (in millions) for the ramp positions above, used to
-# interpolate shades for sizes that fall between the canonical four.
-_MODEL_SIZE_ANCHORS_MILLIONS: list[tuple[float, float]] = [
-    (7_000.0, 0.0),
-    (1_400.0, 0.5),
-    (800.0, 1.0),
-    (275.0, 1.5),
-]
-
-
-def _ramp_color_at(architecture: str, position: float) -> Color:
-    ramp = architecture_ramp(architecture, MODEL_SIZE_RAMP_STEPS)
-    position = min(max(position, 0.0), float(len(ramp) - 1))
-    lower, fraction = int(position), position - int(position)
-    if fraction == 0.0:
-        return ramp[lower]
-    upper = ramp[lower + 1]
-    return (
-        ramp[lower][0] * (1.0 - fraction) + upper[0] * fraction,
-        ramp[lower][1] * (1.0 - fraction) + upper[1] * fraction,
-        ramp[lower][2] * (1.0 - fraction) + upper[2] * fraction,
-    )
+    fraction = min(max(fraction, 0.0), 1.0)
+    light_l, dark_l = _MODEL_SIZE_LIGHTNESS_RANGE
+    light_scale, dark_scale = _MODEL_SIZE_CHROMA_SCALE_RANGE
+    _, anchor_chroma, anchor_hue = _anchor_oklch(architecture)
+    lightness = light_l + fraction * (dark_l - light_l)
+    chroma = anchor_chroma * (light_scale + fraction * (dark_scale - light_scale))
+    return _oklch_color(lightness, chroma, anchor_hue)
 
 
 def model_size_color(architecture: str, size: str = "275M") -> Color:
     """Color for one architecture at one model size: hue = family, shade = size."""
-    if size not in _MODEL_SIZE_RAMP_POSITIONS:
-        raise KeyError(f"Unknown model size {size!r}; expected one of {MODEL_SIZE_SHADE_ORDER}")
-    return _ramp_color_at(architecture, _MODEL_SIZE_RAMP_POSITIONS[size])
+    if size not in _MODEL_SIZE_MILLIONS:
+        raise KeyError(
+            f"Unknown model size {size!r}; expected one of {sorted(_MODEL_SIZE_MILLIONS)}"
+        )
+    return model_size_color_millions(architecture, _MODEL_SIZE_MILLIONS[size])
 
 
-def model_size_color_millions(architecture: str, size_millions: float) -> Color:
-    """Shade for an arbitrary parameter count, log-interpolated between the anchors.
-
-    Sizes at the canonical anchors (275M, 800M, 1.4B, 7B) match
-    :func:`model_size_color` exactly; in-between sizes (e.g. 450M, 2.7B) get
-    monotonically darker shades as the parameter count grows, clamped to the
-    ramp's raised floor and dark end.
-    """
-    if size_millions <= 0:
-        raise ValueError(f"size_millions must be positive, got {size_millions!r}")
-    log_size = math.log(float(size_millions))
-    anchors = sorted(
-        (math.log(millions), position) for millions, position in _MODEL_SIZE_ANCHORS_MILLIONS
-    )
-    if log_size <= anchors[0][0]:
-        return _ramp_color_at(architecture, anchors[0][1])
-    if log_size >= anchors[-1][0]:
-        return _ramp_color_at(architecture, anchors[-1][1])
-    for (low_log, low_pos), (high_log, high_pos) in zip(anchors, anchors[1:]):
-        if low_log <= log_size <= high_log:
-            fraction = (log_size - low_log) / (high_log - low_log)
-            return _ramp_color_at(architecture, low_pos + fraction * (high_pos - low_pos))
-    raise AssertionError("unreachable")
+def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> list[Color]:
+    """Darkest-to-lightest shade ramp for one architecture, log-spaced over the size bounds."""
+    if steps < 2:
+        raise ValueError(f"steps must be at least 2, got {steps}")
+    low_millions, high_millions = _MODEL_SIZE_RAMP_BOUNDS_MILLIONS
+    log_low, log_high = math.log(low_millions), math.log(high_millions)
+    return [
+        model_size_color_millions(
+            architecture,
+            math.exp(log_high + (log_low - log_high) * step / (steps - 1)),
+        )
+        for step in range(steps)
+    ]
 
 
 # The five directly-trained StateBench 275M model variants. Hue encodes the model
@@ -629,7 +684,7 @@ __all__ = [
     "DEFAULT_RCS",
     "rcs",
     "PALETTES",
-    "ARCHITECTURE_PALETTE_SCHEMES",
+    "ARCHITECTURE_COLOR_ANCHORS",
     "MODEL_SIZE_RAMP_STEPS",
     "MODEL_SIZE_SHADE_ORDER",
     "STATE_BENCH_MODEL_ORDER",
