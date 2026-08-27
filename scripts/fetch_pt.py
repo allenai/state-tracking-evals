@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fetch_results import main  # noqa: E402
 
 BEAKER = [
-    {"workspace": "ai2/beyond-state", "group": "jacksonp-state-bench-lc-10"},
+    {"workspace": "ai2/beyond-state", "group": "jacksonp-state-bench-pt"},
     # {"workspace": "ai2/linear-rnns", "group": "jacksonp-state-bench-lc-8.1"}
 ]
 

@@ -12,7 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OLMO_EVAL_DIR = REPO_ROOT / "olmo-eval"
 
-GROUP = "jacksonp-state-bench-lc-8"
+GROUP = "jacksonp-state-bench-pt"
 DEFAULT_CLUSTER = "ai2/saturn"
 NUM_GPUS = 4
 WORKSPACE = "ai2/beyond-state"
