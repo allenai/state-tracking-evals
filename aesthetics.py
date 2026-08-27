@@ -54,7 +54,7 @@ type PaletteNameFormatter = Callable[[str, str], str]
 _CM_TO_IN: float = 1.0 / 2.54
 
 PAPER_WIDTH_IN: float = 5.5
-FIG_HEIGHT_SINGLE_ROW_IN: float = 1.3
+FIG_HEIGHT_SINGLE_ROW_IN: float = 1.2
 FIG_HEIGHT_DOUBLE_ROW_IN: float = 2.8
 
 # ACL-style venues use A4 paper with 7.7 cm columns and a 0.6 cm gutter.
