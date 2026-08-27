@@ -61,6 +61,19 @@ def _plugin_dependencies_override(plugins_ref: str | None = None) -> str:
     return f"provider.dependencies={json.dumps(deps)}"
 
 
+# Canonical ascending-size order for launch scheduling.
+SIZE_ORDER = (
+    "275m",
+    "275m-transformer",
+    "275m-gdn",
+    "450m",
+    "810m",
+    "1.4b",
+    "2.7b",
+    "2.7b-lr5em5",
+    "2.7b-warmup5k",
+)
+
 # Each stage maps size -> list of HF checkpoint paths.
 # Single-model stages have one-element lists; grid searches have multiple.
 all_stages: dict[str, dict[str, list[str]]] = {
@@ -429,9 +442,12 @@ def main():
             hf = spec["hf"]
             targets.append((hf, f"baseline {key} ({hf})", NUM_GPUS))
     else:
+        # Ascending model size, regardless of the order --sizes was given in,
+        # so bigger (slower) models queue after smaller ones within each tier.
+        size_rank = {size: rank for rank, size in enumerate(SIZE_ORDER)}
         for stage in args.stages:
             checkpoints = all_stages[stage]
-            for size in args.sizes:
+            for size in sorted(args.sizes, key=lambda s: size_rank.get(s, len(size_rank))):
                 if size not in checkpoints:
                     print(f"[skip] {stage} has no size {size}")
                     continue

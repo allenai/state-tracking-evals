@@ -322,12 +322,15 @@ def resolve_tiers(requested_tiers: list[str] | None, strata: list[str]) -> list[
 def main() -> None:
     args = parse_args()
     launched = 0
-    for model_type in args.model_type:
-        for dataset_type in args.dataset_type:
-            for seed in args.seed:
-                available = checkpoint_paths(model_type, dataset_type, seed)
-                checkpoints = resolve_checkpoints(available, args.checkpoints, args.final)
-                for tier in resolve_tiers(args.tiers, args.strata):
+    # Tiers ascend outermost so every model's cheap short-context jobs queue
+    # before any long-context job: the multi-hour 256k runs would otherwise
+    # hog GPU slots ahead of quick jobs for the remaining models.
+    for tier in resolve_tiers(args.tiers, args.strata):
+        for model_type in args.model_type:
+            for dataset_type in args.dataset_type:
+                for seed in args.seed:
+                    available = checkpoint_paths(model_type, dataset_type, seed)
+                    checkpoints = resolve_checkpoints(available, args.checkpoints, args.final)
                     for checkpoint in checkpoints:
                         command = build_command(
                             str(available[checkpoint]),
