@@ -19,6 +19,9 @@ BEAKER = [
     {
         "workspace": "ai2/beyond-state",
         "group": "jacksonp-state-bench-dt-275m",
+        # The Beaker group name is fixed on the launched experiments, but the
+        # local results directory drops the suffix.
+        "output_name": "jacksonp-state-bench-dt",
     },
     # {
     #     "workspace": "ai2/linear-rnns",
@@ -32,5 +35,6 @@ if __name__ == "__main__":
         main(
             default_group=beaker["group"],
             default_workspace=beaker["workspace"],
+            default_output_name=beaker.get("output_name"),
             description="Fetch directly-trained synthetic state-bench results.",
         )

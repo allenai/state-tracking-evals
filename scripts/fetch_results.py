@@ -185,6 +185,7 @@ def main(
     *,
     default_group: str = GROUP,
     default_workspace: str = WORKSPACE,
+    default_output_name: str | None = None,
     description: str = "Fetch olmo-eval results for a specific olmo-eval group.",
 ):
     """Fetch results, allowing small group-specific entry points to set defaults."""
@@ -192,13 +193,18 @@ def main(
     parser.add_argument("--group", default=default_group, help="olmo-eval group name")
     parser.add_argument("--workspace", default=default_workspace, help="Beaker workspace (user namespace) to fetch experiments from")
     parser.add_argument("--output", type=Path, default=OUTPUT_DIR, help="Base output directory (results will be organized by group)")
+    parser.add_argument(
+        "--output-name",
+        default=default_output_name,
+        help="Directory name under --output (default: the sanitized group name)",
+    )
     parser.add_argument("--completed-only", action="store_true", help="Skip experiments still running")
     parser.add_argument("--no-download", action="store_true", help="Only list, don't download")
     parser.add_argument("--workers", type=int, default=32, help="Parallel download workers")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show per-file download progress from beaker dataset fetch")
     args = parser.parse_args()
 
-    group_dir = args.output / sanitize_group_name(args.group)
+    group_dir = args.output / (args.output_name or sanitize_group_name(args.group))
     group_dir.mkdir(parents=True, exist_ok=True)
 
     combined_path = group_dir / "all_results.json"
