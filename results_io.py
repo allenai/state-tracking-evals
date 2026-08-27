@@ -11,6 +11,7 @@ superseded predictions are never read off disk.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -74,9 +75,23 @@ def cached_doc_metadata(
     """
     from datasets import load_dataset
 
+    key_prefix = "__".join(part.replace("/", "--") for part in (path, subset, split))
+    if revision is None and os.environ.get("HF_HUB_OFFLINE") == "1":
+        # Deliberate offline iteration: reuse the newest cached revision on disk
+        # instead of resolving the Hub. Only for reruns where the dataset is
+        # known unchanged; unset HF_HUB_OFFLINE to restore the SHA check.
+        cached = sorted(
+            Path(cache_dir).glob(f"{key_prefix}__*.jsonl"),
+            key=lambda f: f.stat().st_mtime,
+        )
+        if not cached:
+            raise FileNotFoundError(
+                f"HF_HUB_OFFLINE=1 but no cached metadata for {path}/{subset}/{split} "
+                f"under {cache_dir}"
+            )
+        revision = cached[-1].stem.rsplit("__", 1)[-1]
     revision = revision or dataset_revision(path)
-    cache_key = "__".join(part.replace("/", "--") for part in (path, subset, split, revision))
-    cache_file = Path(cache_dir) / f"{cache_key}.jsonl"
+    cache_file = Path(cache_dir) / f"{key_prefix}__{revision}.jsonl"
     rows: list[dict[str, Any]] | None = None
     cached_columns: set[str] = set()
     if cache_file.exists():
