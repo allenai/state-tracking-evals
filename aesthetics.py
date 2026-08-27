@@ -34,6 +34,7 @@ before each cell execution.
 from __future__ import annotations
 
 import colorsys
+import math
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, TypeGuard, cast, overload
@@ -401,12 +402,19 @@ def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> 
     )
 
 
-def model_size_color(architecture: str, size: str = "275M") -> Color:
-    """Color for one architecture at one model size: hue = family, shade = size."""
-    if size not in _MODEL_SIZE_RAMP_POSITIONS:
-        raise KeyError(f"Unknown model size {size!r}; expected one of {MODEL_SIZE_SHADE_ORDER}")
+# Anchor parameter counts (in millions) for the ramp positions above, used to
+# interpolate shades for sizes that fall between the canonical four.
+_MODEL_SIZE_ANCHORS_MILLIONS: list[tuple[float, float]] = [
+    (7_000.0, 0.0),
+    (1_400.0, 0.5),
+    (800.0, 1.0),
+    (275.0, 1.5),
+]
+
+
+def _ramp_color_at(architecture: str, position: float) -> Color:
     ramp = architecture_ramp(architecture, MODEL_SIZE_RAMP_STEPS)
-    position = _MODEL_SIZE_RAMP_POSITIONS[size]
+    position = min(max(position, 0.0), float(len(ramp) - 1))
     lower, fraction = int(position), position - int(position)
     if fraction == 0.0:
         return ramp[lower]
@@ -416,6 +424,38 @@ def model_size_color(architecture: str, size: str = "275M") -> Color:
         ramp[lower][1] * (1.0 - fraction) + upper[1] * fraction,
         ramp[lower][2] * (1.0 - fraction) + upper[2] * fraction,
     )
+
+
+def model_size_color(architecture: str, size: str = "275M") -> Color:
+    """Color for one architecture at one model size: hue = family, shade = size."""
+    if size not in _MODEL_SIZE_RAMP_POSITIONS:
+        raise KeyError(f"Unknown model size {size!r}; expected one of {MODEL_SIZE_SHADE_ORDER}")
+    return _ramp_color_at(architecture, _MODEL_SIZE_RAMP_POSITIONS[size])
+
+
+def model_size_color_millions(architecture: str, size_millions: float) -> Color:
+    """Shade for an arbitrary parameter count, log-interpolated between the anchors.
+
+    Sizes at the canonical anchors (275M, 800M, 1.4B, 7B) match
+    :func:`model_size_color` exactly; in-between sizes (e.g. 450M, 2.7B) get
+    monotonically darker shades as the parameter count grows, clamped to the
+    ramp's raised floor and dark end.
+    """
+    if size_millions <= 0:
+        raise ValueError(f"size_millions must be positive, got {size_millions!r}")
+    log_size = math.log(float(size_millions))
+    anchors = sorted(
+        (math.log(millions), position) for millions, position in _MODEL_SIZE_ANCHORS_MILLIONS
+    )
+    if log_size <= anchors[0][0]:
+        return _ramp_color_at(architecture, anchors[0][1])
+    if log_size >= anchors[-1][0]:
+        return _ramp_color_at(architecture, anchors[-1][1])
+    for (low_log, low_pos), (high_log, high_pos) in zip(anchors, anchors[1:]):
+        if low_log <= log_size <= high_log:
+            fraction = (log_size - low_log) / (high_log - low_log)
+            return _ramp_color_at(architecture, low_pos + fraction * (high_pos - low_pos))
+    raise AssertionError("unreachable")
 
 
 # The five directly-trained StateBench 275M model variants. Hue encodes the model
@@ -598,6 +638,7 @@ __all__ = [
     "STATE_BENCH_MODEL_LABELS",
     "architecture_ramp",
     "model_size_color",
+    "model_size_color_millions",
     "state_bench_model_color",
     "set_palette",
     "update_palette",
