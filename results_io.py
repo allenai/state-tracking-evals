@@ -38,6 +38,7 @@ def experiment_created_at(experiment_id: str) -> datetime:
 
 
 @lru_cache(maxsize=None)
+@lru_cache(maxsize=None)
 def dataset_revision(path: str) -> str:
     """Resolve a Hugging Face dataset's current commit SHA.
 
@@ -52,6 +53,50 @@ def dataset_revision(path: str) -> str:
     if sha is None:
         raise ValueError(f"Hugging Face reported no commit SHA for dataset {path!r}")
     return sha
+
+
+def cached_doc_metadata(
+    path: str,
+    subset: str,
+    split: str,
+    fields: Sequence[str],
+    cache_dir: Path,
+    *,
+    id_column: str = "id",
+    revision: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Map example id -> selected metadata fields for one dataset split.
+
+    Streams only ``[id_column, *fields]`` from the Hub and caches the rows on
+    disk keyed by the resolved commit SHA, so figure regeneration never
+    re-downloads or re-resolves dataset shards. A cache written with fewer
+    fields than requested is refetched.
+    """
+    from datasets import load_dataset
+
+    revision = revision or dataset_revision(path)
+    cache_key = "__".join(part.replace("/", "--") for part in (path, subset, split, revision))
+    cache_file = Path(cache_dir) / f"{cache_key}.jsonl"
+    rows: list[dict[str, Any]] | None = None
+    cached_columns: set[str] = set()
+    if cache_file.exists():
+        rows = [json.loads(line) for line in cache_file.open()]
+        if rows:
+            cached_columns = set(rows[0])
+            if not {id_column, *fields} <= cached_columns:
+                rows = None  # cache predates the requested columns
+    if rows is None:
+        dataset = load_dataset(path, subset, split=split, revision=revision, streaming=True)
+        # Refetch the union of the requested and previously cached columns so
+        # callers with different field sets or id columns share one cache file
+        # instead of repeatedly overwriting each other's.
+        wanted = dict.fromkeys([id_column, *fields, *sorted(cached_columns)])
+        columns = [c for c in wanted if c in dataset.column_names]
+        rows = list(dataset.select_columns(columns))
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        with cache_file.open("w") as cache:
+            cache.writelines(json.dumps(row) + "\n" for row in rows)
+    return {row[id_column]: row for row in rows}
 
 
 def normalize_task_name(task_name: str) -> str:
