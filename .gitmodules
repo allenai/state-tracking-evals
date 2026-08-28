@@ -10,3 +10,7 @@
 	path = state-bench
 	url = ssh://git@github.com/jopetty/state-bench.git
 	branch = main
+[submodule "sensitivity-estimate"]
+	path = sensitivity-estimate
+	url = ssh://git@github.com/jopetty/sensitivity-estimate.git
+	branch = main
