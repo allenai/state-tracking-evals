@@ -47,4 +47,10 @@ dev = [
 [tool.ruff]
 # The vendored submodules carry their own lint configs; linting them here would
 # make this repo's hooks fail on upstream code after a submodule bump.
-extend-exclude = ["olmo-core", "olmo-eval", "state-bench"]
+extend-exclude = [
+    "olmo-core",
+    "olmo-eval",
+    "sensitivity-estimate",
+    "state-bench",
+    "state-bench-paper",
+]

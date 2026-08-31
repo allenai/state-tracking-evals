@@ -14,3 +14,6 @@
 	path = sensitivity-estimate
 	url = ssh://git@github.com/jopetty/sensitivity-estimate.git
 	branch = main
+[submodule "state-bench-paper"]
+	path = state-bench-paper
+	url = git@github.com:jopetty/state-bench-paper.git
