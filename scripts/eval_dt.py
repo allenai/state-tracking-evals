@@ -1,6 +1,6 @@
 """Runs state-bench evals on directly-trained 275M-class models.
 
-Every 275M StateBench variant (the two transformers, the hybrid, and the two pure-GDN
+Every 275M StateBench variant (the two transformers, the two hybrids, and the two pure-GDN
 models) is saved in the HF ``olmo3_5_hybrid`` format, so all of them are served by the
 HF provider with the ``jopetty/transformers@olmo-3.5-hybrid-state-bench`` fork installed
 in the job (the fork supports the homogeneous layer_types the non-hybrid variants use).
@@ -30,7 +30,7 @@ WORKSPACE = "ai2/beyond-state"
 BUDGET = "ai2/oe-other"
 
 CHECKPOINT_BASE = Path("/weka/oe-training-default/ai2-llm/model-ladders/state-bench/275M")
-MODEL_TYPES = ("transformer-rope", "transformer-nope", "hybrid", "gdn-sdp", "gdn-full")
+MODEL_TYPES = ("transformer-rope", "transformer-nope", "hybrid", "hybrid-sdp", "gdn-sdp", "gdn-full")
 DATASET_TYPES = (
     "r-trivial",
     "aperiodic",
@@ -57,6 +57,7 @@ CHECKPOINT_STEPS = {
     "transformer-rope": (3353, 3726, 7078, 7451),
     "transformer-nope": (3353, 3726, 7078, 7451),
     "hybrid": (3627, 4030, 7656, 8059),
+    "hybrid-sdp": (3627, 4030, 7656, 8059),  # same param count as hybrid
     "gdn-sdp": (3695, 4106, 7800, 8211),
     "gdn-full": (3695, 4106, 7800, 8211),
 }
