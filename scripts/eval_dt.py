@@ -37,6 +37,11 @@ DATASET_TYPES = (
     "periodic",
     "periodic-sens-shuffled",
     "periodic-sens-curriculum",
+    # Trained on the increment-based solvable build (state-tracking-solvable-v1);
+    # evaluated on the same integer-code test tiers as everything else.
+    "solvable",
+    "modular-aperiodic",
+    "modular-r-trivial",
 )
 SEEDS = (0,)
 
@@ -46,6 +51,9 @@ DATASET_DIRS = {
     "periodic": "integer-code--periodic",
     "periodic-sens-shuffled": "integer-code--periodic--sens-shuffled",
     "periodic-sens-curriculum": "integer-code--periodic--sens-curriculum",
+    "solvable": "integer-code-modular--solvable",
+    "modular-aperiodic": "integer-code-modular--aperiodic",
+    "modular-r-trivial": "integer-code-modular--r-trivial",
 }
 
 # Fixed WSDS checkpoint steps per model type: [period-1 pre-decay, period-1 end,
