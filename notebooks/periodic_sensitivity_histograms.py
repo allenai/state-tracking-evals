@@ -89,7 +89,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise ValueError("dataset labels must be unique")
 
     palette = dict(zip(labels, sns.color_palette("deep", n_colors=len(labels)), strict=True))
-    figure, axis = plt.subplots(figsize=(aes.PAPER_WIDTH_IN, aes.FIG_HEIGHT_DOUBLE_ROW_IN))
+    figure, axis = aes.half_width_figure("Periodic sensitivity coverage")
     bins = np.linspace(0.0, 1.0, 33)
     for path, label in zip(args.inputs, labels, strict=True):
         sns.histplot(
@@ -105,15 +105,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
     axis.set(
         xlabel="Sensitivity coverage",
-        ylabel="Proportion of periodic sequences",
+        ylabel="Proportion of sequences",
         xlim=(0.0, 1.0),
         xticks=np.linspace(0.0, 1.0, 6),
     )
-    axis.legend(title="Aperiodic mix", frameon=False)
+    axis.xaxis.set_major_formatter(aes.PCT_FORMATTER)
+    axis.legend(title="Aperiodic mix", frameon=False, fontsize=7, title_fontsize=7)
     sns.despine(fig=figure)
-    figure.subplots_adjust(top=0.82)
-    aes.set_figure_title(figure, "Periodic-program sensitivity coverage by aperiodic mixture")
-    aes.save_figure(args.output, fig=figure)
+    aes.save_figure(args.output, fig=figure, tight=False)
     plt.close(figure)
 
 

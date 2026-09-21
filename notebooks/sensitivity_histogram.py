@@ -17,7 +17,6 @@ import statistics
 import sys
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -65,7 +64,9 @@ def main(argv: list[str] | None = None) -> int:
     if not values:
         raise SystemExit(f"no completed records with {args.metric!r} in {args.input}")
 
-    figure, axis = plt.subplots(figsize=(aes.PAPER_WIDTH_IN, aes.FIG_HEIGHT_DOUBLE_ROW_IN))
+    metric_label = args.metric.replace("_", " ").capitalize()
+    title = args.title or f"CruxEval {metric_label.lower()}"
+    figure, axis = aes.half_width_figure(title)
     sns.histplot(values, bins=args.bins, color=aes.NONSEMANTIC_COLOR, ax=axis)
     median = statistics.median(values)
     axis.axvline(
@@ -75,19 +76,16 @@ def main(argv: list[str] | None = None) -> int:
         color=aes.darken(aes.NONSEMANTIC_COLOR, by=0.4),
         label=f"median = {median:.2f}",
     )
-    metric_label = args.metric.replace("_", " ").capitalize()
     axis.set_xlabel(metric_label)
     axis.set_ylabel("Functions")
     axis.yaxis.set_major_formatter(aes.NICE_FORMATTER)
     if args.metric in {"sensitivity_density", "sensitivity_coverage"}:
         axis.xaxis.set_major_formatter(aes.PCT_FORMATTER)
-    axis.legend(frameon=False)
+    axis.legend(frameon=False, fontsize=7)
     sns.despine(fig=figure)
 
-    title = args.title or f"{metric_label} of executed CruxEval functions"
-    aes.set_figure_title(figure, title)
     output = args.output or FIGURES_DIR / args.metric
-    pdf_path, _ = aes.save_figure(output, fig=figure)
+    pdf_path, _ = aes.save_figure(output, fig=figure, tight=False)
     print(f"wrote {pdf_path}")
     return 0
 

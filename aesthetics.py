@@ -587,6 +587,37 @@ NONSEMANTIC_COLOR: Color = darken("#ffcc66", by=0.3)
 # Reference-line color for chance accuracy in eval plots.
 CHANCE_LINE_COLOR: str = "#E6B800"
 
+# Fixed canvas for figures placed two-up on one line: each takes half the ICLR
+# line width, and every one shares the same height and axis rectangle so
+# neighbours line up regardless of their tick-label widths. Margins are given
+# in inches; save with ``tight=False`` so the canvas is not re-cropped.
+HALF_WIDTH_FIG_WIDTH_IN: float = ICLR_PAPER_WIDTH_IN / 2
+HALF_WIDTH_FIG_HEIGHT_IN: float = 2.1
+HALF_WIDTH_MARGIN_LEFT_IN: float = 0.62
+HALF_WIDTH_MARGIN_RIGHT_IN: float = 0.1
+HALF_WIDTH_MARGIN_TOP_IN: float = 0.45
+HALF_WIDTH_MARGIN_BOTTOM_IN: float = 0.45
+
+
+def half_width_figure(title: str | None = None):
+    """Create one half-line-width figure with a fixed axis rectangle and title.
+
+    Returns ``(figure, axis)``. The title sits in the top margin, left-aligned
+    with the axis, so two of these figures read as one row.
+    """
+
+    figure, axis = plt.subplots(figsize=(HALF_WIDTH_FIG_WIDTH_IN, HALF_WIDTH_FIG_HEIGHT_IN))
+    left = HALF_WIDTH_MARGIN_LEFT_IN / HALF_WIDTH_FIG_WIDTH_IN
+    figure.subplots_adjust(
+        left=left,
+        right=1 - HALF_WIDTH_MARGIN_RIGHT_IN / HALF_WIDTH_FIG_WIDTH_IN,
+        top=1 - HALF_WIDTH_MARGIN_TOP_IN / HALF_WIDTH_FIG_HEIGHT_IN,
+        bottom=HALF_WIDTH_MARGIN_BOTTOM_IN / HALF_WIDTH_FIG_HEIGHT_IN,
+    )
+    if title is not None:
+        figure.suptitle(title, x=left, y=0.97, ha="left", va="top", fontweight="bold", fontsize=9)
+    return figure, axis
+
 
 def set_figure_title(
     fig,
@@ -665,6 +696,9 @@ __all__ = [
     "ColorLike",
     "Palette",
     "PAPER_WIDTH_IN",
+    "HALF_WIDTH_FIG_WIDTH_IN",
+    "HALF_WIDTH_FIG_HEIGHT_IN",
+    "half_width_figure",
     "FIG_HEIGHT_SINGLE_ROW_IN",
     "FIG_HEIGHT_DOUBLE_ROW_IN",
     "ACL_COLUMN_WIDTH_IN",
