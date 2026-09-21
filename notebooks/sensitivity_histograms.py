@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Two-panel sensitivity-density histogram: StateBench periodic programs and CruxEval.
+"""Two-panel sensitivity histogram: StateBench periodic programs and CruxEval.
 
 Combines notebooks/periodic_sensitivity_histograms.py (left panel, one series
 per periodic dataset) with notebooks/sensitivity_histogram.py (right panel,
@@ -36,9 +36,10 @@ DEFAULT_STATE_BENCH_INPUT = (
 )
 DEFAULT_CRUXEVAL_INPUT = PROJECT_ROOT / "sensitivity-estimate/results/cruxeval-test.jsonl"
 
-# Fixed full-line-width canvas at the height of the single-row dt/pt summary
-# figures (see SUMMARY_* in notebooks/dt_results.ipynb); margins in inches.
-FIG_WIDTH_IN = aes.ICLR_PAPER_WIDTH_IN
+# Same fixed canvas as the single-row dt/pt summary figures (SUMMARY_* in
+# notebooks/dt_results.ipynb): 1.5x the line width by 2.0 in, included at
+# \linewidth so text scales identically across those figures. Margins in inches.
+FIG_WIDTH_IN = 1.5 * aes.ICLR_PAPER_WIDTH_IN
 FIG_HEIGHT_IN = 2.0
 MARGIN_LEFT_IN = 0.75
 MARGIN_RIGHT_IN = 0.1
@@ -72,9 +73,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--metric",
-        default="sensitivity_density",
-        choices=("sensitivity_density", "sensitivity_coverage"),
-        help="Record field plotted on both panels (default: sensitivity_density).",
+        default="sensitivity_coverage",
+        choices=("sensitivity_coverage", "sensitivity_density"),
+        help=(
+            "Record field plotted on both panels (default: sensitivity_coverage). Coverage is "
+            "the fraction of live variables per state; density further divides by the number "
+            "of queried outputs, which for StateBench mostly reflects the variable count."
+        ),
     )
     parser.add_argument(
         "--output",
