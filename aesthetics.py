@@ -518,10 +518,14 @@ def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> 
 # (275M = lightest), and marker the within-family variant: circles for the
 # canonical variant (RoPE positions; negative eigenvalues allowed), squares for
 # the restricted one (NoPE; SDP).
+# Within each family, circles mark the RoPE/full variant and squares the
+# NoPE/SDP variant, so `hybrid` (full delta rule) pairs with `hybrid-sdp`
+# exactly as `gdn-full` pairs with `gdn-sdp`.
 STATE_BENCH_MODEL_ORDER: tuple[str, ...] = (
     "transformer-rope",
     "transformer-nope",
     "hybrid",
+    "hybrid-sdp",
     "gdn-sdp",
     "gdn-full",
 )
@@ -529,6 +533,7 @@ STATE_BENCH_MODEL_FAMILIES: dict[str, str] = {
     "transformer-rope": "Transformer",
     "transformer-nope": "Transformer",
     "hybrid": "Hybrid",
+    "hybrid-sdp": "Hybrid",
     "gdn-sdp": "GDN",
     "gdn-full": "GDN",
 }
@@ -536,13 +541,15 @@ STATE_BENCH_MODEL_MARKERS: dict[str, str] = {
     "transformer-rope": "o",
     "transformer-nope": "s",
     "hybrid": "o",
+    "hybrid-sdp": "s",
     "gdn-sdp": "s",
     "gdn-full": "o",
 }
 STATE_BENCH_MODEL_LABELS: dict[str, str] = {
     "transformer-rope": "Transformer (RoPE)",
     "transformer-nope": "Transformer (NoPE)",
-    "hybrid": "Hybrid",
+    "hybrid": "Hybrid (full)",
+    "hybrid-sdp": "Hybrid (SDP)",
     "gdn-sdp": "GDN (SDP)",
     "gdn-full": "GDN (full)",
 }
