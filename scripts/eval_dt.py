@@ -56,6 +56,16 @@ DATASET_DIRS = {
     "modular-r-trivial": "integer-code-modular--r-trivial",
 }
 
+# Each job evaluates every complexity class of one formatter for one context tier, so
+# the matched-distribution result is always included. Models trained on the modular
+# (solvable) build are evaluated on the modular formatter's test set, whose zero-based
+# value vocabulary matches their training data; everything else uses integer-code.
+MODULAR_DATASET_TYPES = frozenset({"solvable", "modular-aperiodic", "modular-r-trivial"})
+
+
+def eval_formatter_for(dataset_type: str) -> str:
+    return "integer_code_modular" if dataset_type in MODULAR_DATASET_TYPES else "integer_code"
+
 # Fixed WSDS checkpoint steps per model type: [period-1 pre-decay, period-1 end,
 # period-2 pre-decay, period-2 end(final)], computed from olmo-core's
 # RunConfigurator.configure_checkpoint_intervals with each variant's non-embedding
@@ -160,6 +170,7 @@ def checkpoint_paths(model_type: str, dataset_type: str, seed: int) -> dict[int,
 def build_command(
     model_path: str,
     tier: str,
+    formatter: str = "integer_code",
     limit: int | None = None,
     save_requests: bool = True,
     num_gpus: int = NUM_GPUS,
@@ -178,7 +189,7 @@ def build_command(
         "-H",
         "default",
         "-n",
-        f"{get_model_short_name(model_path)}-state_bench_integer_code_{tier}",
+        f"{get_model_short_name(model_path)}-state_bench_{formatter}_{tier}",
     ]
     for key, value in HARNESS_OVERRIDES:
         cmd.extend(["-o", f"{key}={value.replace('{num_gpus}', str(num_gpus))}"])
@@ -186,7 +197,7 @@ def build_command(
     cmd.extend(["-o", f"batching.chunk_size={BATCH_CHUNK_SIZE}"])
     cmd.extend(["-m", model_path])
     # An `-o` override applies to the preceding `-t`, so the cap goes after it.
-    cmd.extend(["-t", f"state_bench:integer_code:{tier}"])
+    cmd.extend(["-t", f"state_bench:{formatter}:{tier}"])
     if limit is not None:
         cmd.extend(["-o", f"limit={limit}"])
     if not save_requests:
@@ -344,6 +355,7 @@ def main() -> None:
                         command = build_command(
                             str(available[checkpoint]),
                             tier,
+                            formatter=eval_formatter_for(dataset_type),
                             limit=args.limit,
                             save_requests=args.save_requests,
                             num_gpus=args.gpus,
