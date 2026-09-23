@@ -44,6 +44,25 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Optional labels, in the same order as the canonical JSONL inputs.",
     )
     parser.add_argument(
+        "--complexities",
+        nargs="+",
+        help=(
+            "Complexity class to keep from each input, in the same order (default: periodic "
+            "for every input). Pass the same file twice with different classes to compare "
+            "families drawn from one build."
+        ),
+    )
+    parser.add_argument(
+        "--legend-title",
+        default="Aperiodic mix",
+        help='Legend title (default: "Aperiodic mix").',
+    )
+    parser.add_argument(
+        "--title",
+        default="Periodic sensitivity coverage",
+        help="Figure title.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
@@ -55,16 +74,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def read_coverages(path: Path) -> list[float]:
+def read_coverages(path: Path, complexity: str = "periodic") -> list[float]:
     coverages: list[float] = []
     with path.open() as handle:
         for line in handle:
             record = json.loads(line)
-            if record["complexity"] != "periodic":
+            if record["complexity"] != complexity:
                 continue
             coverages.append(float(record["sensitivity_coverage"]))
     if not coverages:
-        raise ValueError(f"no periodic records found in {path}")
+        raise ValueError(f"no {complexity} records found in {path}")
     return coverages
 
 
@@ -87,13 +106,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise ValueError("--labels must provide exactly one label for each input")
     if len(set(labels)) != len(labels):
         raise ValueError("dataset labels must be unique")
+    complexities = args.complexities or ["periodic"] * len(args.inputs)
+    if len(complexities) != len(args.inputs):
+        raise ValueError("--complexities must provide exactly one class for each input")
 
     palette = dict(zip(labels, sns.color_palette("deep", n_colors=len(labels)), strict=True))
-    figure, axis = aes.half_width_figure("Periodic sensitivity coverage")
+    figure, axis = aes.half_width_figure(args.title)
     bins = np.linspace(0.0, 1.0, 33)
-    for path, label in zip(args.inputs, labels, strict=True):
+    for path, label, complexity in zip(args.inputs, labels, complexities, strict=True):
         sns.histplot(
-            x=read_coverages(path),
+            x=read_coverages(path, complexity),
             bins=bins,
             stat="proportion",
             element="bars",
@@ -110,7 +132,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         xticks=np.linspace(0.0, 1.0, 6),
     )
     axis.xaxis.set_major_formatter(aes.PCT_FORMATTER)
-    axis.legend(title="Aperiodic mix", frameon=False, fontsize=7, title_fontsize=7)
+    axis.legend(title=args.legend_title, frameon=False, fontsize=7, title_fontsize=7)
     sns.despine(fig=figure)
     aes.save_figure(args.output, fig=figure, tight=False)
     plt.close(figure)
