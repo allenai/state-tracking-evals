@@ -11,6 +11,7 @@ superseded predictions are never read off disk.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
@@ -38,7 +39,21 @@ def experiment_created_at(experiment_id: str) -> datetime:
     return datetime.fromtimestamp(milliseconds / 1000, UTC)
 
 
-@lru_cache(maxsize=None)
+log = logging.getLogger(__name__)
+
+# Dataset repositories that moved on the Hub after jobs recorded their original
+# id in task configs. Lookups go to the new location; cache files keep the
+# original id in their key so existing caches remain valid.
+DATASET_REPO_ALIASES: dict[str, str] = {
+    "jacksonp-ai2/state-bench-lc": "allenai/state-bench",
+}
+
+
+def resolve_dataset_repo(path: str) -> str:
+    """Return the current Hub id for a dataset repository recorded in a task config."""
+    return DATASET_REPO_ALIASES.get(path, path)
+
+
 @lru_cache(maxsize=None)
 def dataset_revision(path: str) -> str:
     """Resolve a Hugging Face dataset's current commit SHA.
@@ -50,7 +65,7 @@ def dataset_revision(path: str) -> str:
     """
     from huggingface_hub import HfApi
 
-    sha = HfApi().dataset_info(path).sha
+    sha = HfApi().dataset_info(resolve_dataset_repo(path)).sha
     if sha is None:
         raise ValueError(f"Hugging Face reported no commit SHA for dataset {path!r}")
     return sha
@@ -72,25 +87,43 @@ def cached_doc_metadata(
     disk keyed by the resolved commit SHA, so figure regeneration never
     re-downloads or re-resolves dataset shards. A cache written with fewer
     fields than requested is refetched.
+
+    With ``HF_HUB_OFFLINE=1`` the newest cached revision is reused without
+    contacting the Hub. Otherwise the current revision is resolved online; if
+    that fails (for example the repository moved or the token cannot see it)
+    and a cache exists, the newest cached revision is used with a warning.
     """
     from datasets import load_dataset
 
     key_prefix = "__".join(part.replace("/", "--") for part in (path, subset, split))
+    cached = sorted(
+        Path(cache_dir).glob(f"{key_prefix}__*.jsonl"),
+        key=lambda f: f.stat().st_mtime,
+    )
     if revision is None and os.environ.get("HF_HUB_OFFLINE") == "1":
         # Deliberate offline iteration: reuse the newest cached revision on disk
         # instead of resolving the Hub. Only for reruns where the dataset is
         # known unchanged; unset HF_HUB_OFFLINE to restore the SHA check.
-        cached = sorted(
-            Path(cache_dir).glob(f"{key_prefix}__*.jsonl"),
-            key=lambda f: f.stat().st_mtime,
-        )
         if not cached:
             raise FileNotFoundError(
                 f"HF_HUB_OFFLINE=1 but no cached metadata for {path}/{subset}/{split} "
                 f"under {cache_dir}"
             )
         revision = cached[-1].stem.rsplit("__", 1)[-1]
-    revision = revision or dataset_revision(path)
+    if revision is None:
+        try:
+            revision = dataset_revision(path)
+        except Exception as error:  # noqa: BLE001 - any Hub failure falls back to cache
+            if not cached:
+                raise
+            revision = cached[-1].stem.rsplit("__", 1)[-1]
+            log.warning(
+                "Could not resolve the current revision of %s (%s); reusing cached "
+                "metadata at %s",
+                resolve_dataset_repo(path),
+                type(error).__name__,
+                revision,
+            )
     cache_file = Path(cache_dir) / f"{key_prefix}__{revision}.jsonl"
     rows: list[dict[str, Any]] | None = None
     cached_columns: set[str] = set()
@@ -101,7 +134,9 @@ def cached_doc_metadata(
             if not {id_column, *fields} <= cached_columns:
                 rows = None  # cache predates the requested columns
     if rows is None:
-        dataset = load_dataset(path, subset, split=split, revision=revision, streaming=True)
+        dataset = load_dataset(
+            resolve_dataset_repo(path), subset, split=split, revision=revision, streaming=True
+        )
         # Refetch the union of the requested and previously cached columns so
         # callers with different field sets or id columns share one cache file
         # instead of repeatedly overwriting each other's.
