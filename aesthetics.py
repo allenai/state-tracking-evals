@@ -685,6 +685,9 @@ def save_figure(
 
     save_kwargs = dict(savefig_kwargs)
     save_kwargs.setdefault("transparent", transparent)
+    # Without this every save embeds a fresh timestamp, so regenerating an
+    # unchanged figure still produces a different file and a noisy git diff.
+    save_kwargs.setdefault("metadata", {"CreationDate": None})
     if tight:
         save_kwargs.setdefault("bbox_inches", "tight")
 
