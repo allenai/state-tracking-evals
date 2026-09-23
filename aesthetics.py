@@ -517,9 +517,9 @@ def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> 
 # family (Transformer=red, Hybrid=purple, GDN=blue), shade the parameter count
 # (275M = lightest), and marker the within-family variant: circles for the
 # canonical variant (RoPE positions; negative eigenvalues allowed), squares for
-# the restricted one (NoPE; SDP).
+# the restricted one (NoPE; +, i.e. non-negative eigenvalues).
 # Within each family, circles mark the RoPE/full variant and squares the
-# NoPE/SDP variant, so `hybrid` (full delta rule) pairs with `hybrid-sdp`
+# NoPE/+ variant, so `hybrid` (full delta rule) pairs with `hybrid-sdp`
 # exactly as `gdn-full` pairs with `gdn-sdp`.
 STATE_BENCH_MODEL_ORDER: tuple[str, ...] = (
     "transformer-rope",
@@ -549,8 +549,8 @@ STATE_BENCH_MODEL_LABELS: dict[str, str] = {
     "transformer-rope": "Transformer (RoPE)",
     "transformer-nope": "Transformer (NoPE)",
     "hybrid": "Hybrid (full)",
-    "hybrid-sdp": "Hybrid (SDP)",
-    "gdn-sdp": "GDN (SDP)",
+    "hybrid-sdp": "Hybrid (+)",
+    "gdn-sdp": "GDN (+)",
     "gdn-full": "GDN (full)",
 }
 
