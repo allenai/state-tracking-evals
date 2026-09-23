@@ -37,11 +37,9 @@ DATASET_TYPES = (
     "periodic",
     "periodic-sens-shuffled",
     "periodic-sens-curriculum",
-    # Trained on the increment-based solvable build (state-tracking-solvable-v1);
-    # evaluated on the same integer-code test tiers as everything else.
+    # Trained on the solvable rewrite of the periodic training sources
+    # (state-tracking-solvable-v2); evaluated on the modular test tiers.
     "solvable",
-    "modular-aperiodic",
-    "modular-r-trivial",
 )
 SEEDS = (0,)
 
@@ -51,16 +49,15 @@ DATASET_DIRS = {
     "periodic": "integer-code--periodic",
     "periodic-sens-shuffled": "integer-code--periodic--sens-shuffled",
     "periodic-sens-curriculum": "integer-code--periodic--sens-curriculum",
-    "solvable": "integer-code-modular--solvable",
-    "modular-aperiodic": "integer-code-modular--aperiodic",
-    "modular-r-trivial": "integer-code-modular--r-trivial",
+    # The ladder names the v2 run distinctly from the v1 increment-source runs.
+    "solvable": "integer-code-modular--solvable-v2",
 }
 
 # Each job evaluates every complexity class of one formatter for one context tier, so
 # the matched-distribution result is always included. Models trained on the modular
 # (solvable) build are evaluated on the modular formatter's test set, whose zero-based
 # value vocabulary matches their training data; everything else uses integer-code.
-MODULAR_DATASET_TYPES = frozenset({"solvable", "modular-aperiodic", "modular-r-trivial"})
+MODULAR_DATASET_TYPES = frozenset({"solvable"})
 
 
 def eval_formatter_for(dataset_type: str) -> str:
