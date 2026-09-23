@@ -161,7 +161,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             ax=state_bench_axis,
         )
     state_bench_axis.legend(title="Aperiodic mix", frameon=False, fontsize=7, title_fontsize=7)
-    state_bench_axis.set_title("StateBench periodic programs", fontsize=8, fontweight="regular")
+    state_bench_axis.set_title("StateBench finite-class programs", fontsize=8, fontweight="regular")
 
     cruxeval_values = read_cruxeval(args.cruxeval, args.metric)
     sns.histplot(

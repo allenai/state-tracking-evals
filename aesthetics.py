@@ -548,10 +548,10 @@ STATE_BENCH_MODEL_MARKERS: dict[str, str] = {
 STATE_BENCH_MODEL_LABELS: dict[str, str] = {
     "transformer-rope": "Transformer (RoPE)",
     "transformer-nope": "Transformer (NoPE)",
-    "hybrid": "Hybrid (full)",
+    "hybrid": "Hybrid (±)",
     "hybrid-sdp": "Hybrid (+)",
     "gdn-sdp": "GDN (+)",
-    "gdn-full": "GDN (full)",
+    "gdn-full": "GDN (±)",
 }
 
 
