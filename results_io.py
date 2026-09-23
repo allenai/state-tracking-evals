@@ -54,6 +54,13 @@ def resolve_dataset_repo(path: str) -> str:
     return DATASET_REPO_ALIASES.get(path, path)
 
 
+def equivalent_dataset_repos(path: str) -> tuple[str, ...]:
+    """Every Hub id that names the same dataset as ``path``, current id first."""
+    current = resolve_dataset_repo(path)
+    former = tuple(old for old, new in DATASET_REPO_ALIASES.items() if new == current)
+    return tuple(dict.fromkeys((current, path, *former)))
+
+
 @lru_cache(maxsize=None)
 def dataset_revision(path: str) -> str:
     """Resolve a Hugging Face dataset's current commit SHA.
@@ -95,9 +102,16 @@ def cached_doc_metadata(
     """
     from datasets import load_dataset
 
-    key_prefix = "__".join(part.replace("/", "--") for part in (path, subset, split))
+    # Jobs launched before and after a repository move name the same dataset
+    # differently; caches written under any equivalent id are shared, and new
+    # caches are written under the current id.
+    key_prefixes = [
+        "__".join(part.replace("/", "--") for part in (repo, subset, split))
+        for repo in equivalent_dataset_repos(path)
+    ]
+    key_prefix = key_prefixes[0]
     cached = sorted(
-        Path(cache_dir).glob(f"{key_prefix}__*.jsonl"),
+        (f for prefix in key_prefixes for f in Path(cache_dir).glob(f"{prefix}__*.jsonl")),
         key=lambda f: f.stat().st_mtime,
     )
     if revision is None and os.environ.get("HF_HUB_OFFLINE") == "1":
@@ -125,6 +139,12 @@ def cached_doc_metadata(
                 revision,
             )
     cache_file = Path(cache_dir) / f"{key_prefix}__{revision}.jsonl"
+    if not cache_file.exists():
+        # The same revision may already be cached under a former repository id.
+        for candidate in cached:
+            if candidate.stem.rsplit("__", 1)[-1] == revision:
+                cache_file = candidate
+                break
     rows: list[dict[str, Any]] | None = None
     cached_columns: set[str] = set()
     if cache_file.exists():
