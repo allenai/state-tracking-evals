@@ -154,6 +154,28 @@ def get_model_short_name(model_path: str) -> str:
     return "_".join(model_path.rstrip("/").split("/")[-5:]).lower().replace(":", "_")
 
 
+# Beaker caps experiment names at 128 characters, and appends a 5-character
+# suffix ("-55bd") when a job of the same name already exists, as a rerun does.
+BEAKER_NAME_LIMIT = 128
+BEAKER_DEDUP_SUFFIX_LEN = 5
+
+
+def experiment_name(model_path: str, formatter: str, tier: str) -> str:
+    """Beaker experiment name for one model/tier job; must leave room for a rerun suffix.
+
+    The notebooks select results by model path and task, and read training
+    metadata from the model path, so the name only needs to be unique and
+    readable.
+    """
+    name = f"{get_model_short_name(model_path)}-{formatter}_{tier}"
+    if len(name) + BEAKER_DEDUP_SUFFIX_LEN > BEAKER_NAME_LIMIT:
+        raise ValueError(
+            f"experiment name is {len(name)} characters; Beaker allows "
+            f"{BEAKER_NAME_LIMIT - BEAKER_DEDUP_SUFFIX_LEN} before a rerun suffix: {name}"
+        )
+    return name
+
+
 def model_root(model_type: str, dataset_type: str, seed: int) -> Path:
     return CHECKPOINT_BASE / model_type / DATASET_DIRS[dataset_type] / "Cx1" / f"init_seed{seed}"
 
@@ -186,7 +208,7 @@ def build_command(
         "-H",
         "default",
         "-n",
-        f"{get_model_short_name(model_path)}-state_bench_{formatter}_{tier}",
+        experiment_name(model_path, formatter, tier),
     ]
     for key, value in HARNESS_OVERRIDES:
         cmd.extend(["-o", f"{key}={value.replace('{num_gpus}', str(num_gpus))}"])
