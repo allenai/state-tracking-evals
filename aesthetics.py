@@ -515,11 +515,10 @@ def architecture_ramp(architecture: str, steps: int = MODEL_SIZE_RAMP_STEPS) -> 
 
 # The five directly-trained StateBench 275M model variants. Hue encodes the model
 # family (Transformer=red, Hybrid=purple, GDN=blue), shade the parameter count
-# (275M = lightest), and marker the within-family variant: circles for the
-# canonical variant (RoPE positions; negative eigenvalues allowed), squares for
-# the restricted one (NoPE; +, i.e. non-negative eigenvalues).
-# Within each family, circles mark the RoPE/full variant and squares the
-# NoPE/+ variant, so `hybrid` (full delta rule) pairs with `hybrid-sdp`
+# (275M = lightest), and marker the within-family variant: squares for the full
+# variant (RoPE positions; ±, negative eigenvalues allowed), circles for the one
+# with something taken away (NoPE drops the position encoding; + drops the
+# negative eigenvalues). So `hybrid` (full delta rule) pairs with `hybrid-sdp`
 # exactly as `gdn-full` pairs with `gdn-sdp`.
 STATE_BENCH_MODEL_ORDER: tuple[str, ...] = (
     "transformer-rope",
@@ -538,12 +537,12 @@ STATE_BENCH_MODEL_FAMILIES: dict[str, str] = {
     "gdn-full": "GDN",
 }
 STATE_BENCH_MODEL_MARKERS: dict[str, str] = {
-    "transformer-rope": "o",
-    "transformer-nope": "s",
-    "hybrid": "o",
-    "hybrid-sdp": "s",
-    "gdn-sdp": "s",
-    "gdn-full": "o",
+    "transformer-rope": "s",
+    "transformer-nope": "o",
+    "hybrid": "s",
+    "hybrid-sdp": "o",
+    "gdn-sdp": "o",
+    "gdn-full": "s",
 }
 STATE_BENCH_MODEL_LABELS: dict[str, str] = {
     "transformer-rope": "Transformer (RoPE)",
@@ -701,6 +700,79 @@ def save_figure(
     return pdf_path, None
 
 
+# Legends below the panels, for fixed-canvas figures laid out in inches.
+# Column spacing is tighter than matplotlib's default so more entries fit per row.
+BOTTOM_LEGEND_KWARGS: dict[str, Any] = {
+    "frameon": False,
+    "borderaxespad": 0.0,
+    "columnspacing": 1.2,
+    "handlelength": 1.8,
+}
+# Space between the x-axis labels and the legend, and below the legend.
+BOTTOM_LEGEND_GAP_IN = 0.08
+BOTTOM_LEGEND_PAD_IN = 0.04
+
+
+class BottomLegendLayout:
+    """Column count and inch height of a legend laid out below the panels."""
+
+    def __init__(self, ncol: int, height_in: float) -> None:
+        self.ncol = ncol
+        self.height_in = height_in
+
+    @property
+    def band_in(self) -> float:
+        """Canvas height to reserve under the panels' x-axis labels."""
+        return BOTTOM_LEGEND_GAP_IN + self.height_in + BOTTOM_LEGEND_PAD_IN
+
+
+def bottom_legend_layout(handles: list[Any], width_in: float) -> BottomLegendLayout:
+    """Lay out ``handles`` in as few rows as fit ``width_in``, with balanced rows.
+
+    The legend is measured on a scratch figure with the current rcParams, so a
+    figure can reserve exactly the band it needs before its panels are placed.
+    """
+
+    if not handles:
+        raise ValueError("a bottom legend needs at least one handle")
+    scratch = plt.figure(figsize=(width_in, 2.0))
+    renderer = scratch.canvas.get_renderer()
+
+    def measure(ncol: int) -> tuple[float, float]:
+        legend = scratch.legend(handles=handles, ncol=ncol, **BOTTOM_LEGEND_KWARGS)
+        extent = legend.get_window_extent(renderer)
+        legend.remove()
+        return extent.width / scratch.dpi, extent.height / scratch.dpi
+
+    try:
+        widest = 1
+        for ncol in range(len(handles), 0, -1):
+            if measure(ncol)[0] <= width_in:
+                widest = ncol
+                break
+        # Same row count as the widest fit, but spread evenly across the rows.
+        rows = math.ceil(len(handles) / widest)
+        ncol = math.ceil(len(handles) / rows)
+        return BottomLegendLayout(ncol=ncol, height_in=measure(ncol)[1])
+    finally:
+        plt.close(scratch)
+
+
+def add_bottom_legend(
+    fig: Any, handles: list[Any], layout: BottomLegendLayout, *, x_center: float
+) -> Any:
+    """Place ``handles`` in the band that ``layout`` reserved at the canvas bottom."""
+
+    height_in = fig.get_size_inches()[1]
+    return fig.legend(
+        handles=handles,
+        ncol=layout.ncol,
+        loc="lower center",
+        bbox_to_anchor=(x_center, BOTTOM_LEGEND_PAD_IN / height_in),
+        **BOTTOM_LEGEND_KWARGS,
+    )
+
+
 __all__ = [
     "Color",
     "ColorLike",
@@ -747,6 +819,12 @@ __all__ = [
     "update_dataset_palette",
     "set_figure_title",
     "save_figure",
+    "BOTTOM_LEGEND_KWARGS",
+    "BOTTOM_LEGEND_GAP_IN",
+    "BOTTOM_LEGEND_PAD_IN",
+    "BottomLegendLayout",
+    "bottom_legend_layout",
+    "add_bottom_legend",
     "text_color_for_background",
     "NONSEMANTIC_COLOR",
     "CHANCE_LINE_COLOR",
