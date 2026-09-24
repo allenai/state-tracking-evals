@@ -79,7 +79,12 @@ MARGIN_LEFT_IN = 0.61
 MARGIN_RIGHT_IN = 0.21
 MARGIN_TOP_IN = 0.35
 MARGIN_BOTTOM_IN = 0.5
-BINS = np.linspace(0.0, 1.0, 33)
+# 16 bins of 1/16 each keep the bars wide enough to read at this panel size.
+BINS = np.linspace(0.0, 1.0, 17)
+# Shared y-axis ceiling, just above the tallest bar outside the R-trivial and
+# Aperiodic spikes at zero coverage. Taller bars are clipped at the ceiling,
+# marked with a break, and labelled with their true height.
+Y_MAX = 0.30
 # Whole percentages on both axes; the shared PCT_FORMATTER picks a decimal for
 # proportions this small.
 WHOLE_PERCENT = mtick.PercentFormatter(1.0, decimals=0)
@@ -144,6 +149,34 @@ def read_cruxeval(path: Path, metric: str) -> list[float]:
     return values
 
 
+def clip_bar(axis: plt.Axes, bar: object, text_color: object) -> None:
+    """Clip a bar at Y_MAX with a white break mark and label its true height."""
+
+    height = bar.get_height()
+    bar.set_height(Y_MAX)
+    left, width = bar.get_x(), bar.get_width()
+    for offset in (0.06, 0.1):
+        y = Y_MAX * (1 - offset)
+        axis.plot(
+            [left, left + width],
+            [y - 0.012, y + 0.012],
+            color="white",
+            linewidth=1.2,
+            solid_capstyle="butt",
+            zorder=3,
+        )
+    axis.annotate(
+        f"{height:.0%}",
+        xy=(left + width, Y_MAX),
+        xytext=(2, -1),
+        textcoords="offset points",
+        ha="left",
+        va="top",
+        fontsize=6,
+        color=text_color,
+    )
+
+
 def plot_panel(
     axis: plt.Axes,
     values: list[float],
@@ -162,6 +195,9 @@ def plot_panel(
         **({"edgecolor": edge_color, "linewidth": 0.4} if edge_color is not None else {}),
         ax=axis,
     )
+    clipped = [bar for bar in axis.patches if bar.get_height() > Y_MAX]
+    for bar in clipped:
+        clip_bar(axis, bar, edge_color if edge_color is not None else color)
     median = statistics.median(values)
     median_color = edge_color if edge_color is not None else aes.darken(color, by=0.4)
     axis.axvline(median, linestyle="--", linewidth=1, color=median_color)
@@ -169,7 +205,8 @@ def plot_panel(
     left_of_line = median > 0.5
     axis.annotate(
         f"median {median:.2f}",
-        xy=(median, 0.95),
+        # One line lower when a clipped bar's label occupies the top line.
+        xy=(median, 0.83 if clipped else 0.95),
         xycoords=("data", "axes fraction"),
         xytext=(-3 if left_of_line else 3, 0),
         textcoords="offset points",
@@ -216,6 +253,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             # The panels sit flush; drop the leading 0% so it does not collide
             # with the previous panel's 100%.
             axis.set_xticklabels(["", "50%", "100%"])
+    axes[0].set_ylim(0.0, Y_MAX)
+    axes[0].set_yticks([0.0, 0.1, 0.2, 0.3])
     axes[0].yaxis.set_major_formatter(WHOLE_PERCENT)
     sns.despine(fig=figure)
 
