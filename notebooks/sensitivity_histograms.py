@@ -66,7 +66,11 @@ STATE_BENCH_PANELS = {
     "periodic": ("Finite", xcolor_tint(STBASE_HEX, 25)),
 }
 CRUXEVAL_LABEL = "CruxEval (code)"
-CRUXEVAL_COLOR = sns.color_palette("deep")[0]
+# The same treatment in seaborn's deep blue: a lightened fill, outlined and
+# marked at the median in the blue darkened as stbase!85!black is.
+CRUXEVAL_HEX = "4C72B0"
+CRUXEVAL_COLOR = xcolor_tint(CRUXEVAL_HEX, 70)
+CRUXEVAL_EDGE_COLOR = xcolor_tint(CRUXEVAL_HEX, 85, toward="000000")
 
 # Same fixed canvas as the single-row dt/pt summary figures (SUMMARY_* in
 # notebooks/dt_results.ipynb): 1.5x the line width by 1.75 in, included at
@@ -225,7 +229,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         (label, state_bench_values[complexity], color, STATE_BENCH_EDGE_COLOR)
         for complexity, (label, color) in STATE_BENCH_PANELS.items()
     ]
-    panels.append((CRUXEVAL_LABEL, read_cruxeval(args.cruxeval, args.metric), CRUXEVAL_COLOR, None))
+    panels.append(
+        (
+            CRUXEVAL_LABEL,
+            read_cruxeval(args.cruxeval, args.metric),
+            CRUXEVAL_COLOR,
+            CRUXEVAL_EDGE_COLOR,
+        )
+    )
 
     figure = plt.figure(figsize=(FIG_WIDTH_IN, FIG_HEIGHT_IN))
     grid = figure.add_gridspec(
