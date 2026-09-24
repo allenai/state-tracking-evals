@@ -52,11 +52,13 @@ STATE_BENCH_COLOR = sns.color_palette("deep")[0]
 
 # Same fixed canvas as the single-row dt/pt summary figures (SUMMARY_* in
 # notebooks/dt_results.ipynb): 1.5x the line width by 1.75 in, included at
-# \linewidth so text scales identically across those figures. Margins in inches.
+# \linewidth so text scales identically across those figures. Margins in inches,
+# sized to this figure's labels: the left margin fits the y label and ticks, and
+# the right margin leaves room for the last panel's centred "100%" tick label.
 FIG_WIDTH_IN = 1.5 * aes.ICLR_PAPER_WIDTH_IN
 FIG_HEIGHT_IN = 1.75
-MARGIN_LEFT_IN = 0.75
-MARGIN_RIGHT_IN = 0.1
+MARGIN_LEFT_IN = 0.61
+MARGIN_RIGHT_IN = 0.21
 MARGIN_TOP_IN = 0.35
 MARGIN_BOTTOM_IN = 0.5
 BINS = np.linspace(0.0, 1.0, 33)
