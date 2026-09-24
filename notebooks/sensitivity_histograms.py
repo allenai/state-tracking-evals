@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Five-panel sensitivity histogram: each StateBench class and CruxEval code.
 
-One panel per StateBench complexity class (R-trivial, Aperiodic, Solvable,
+One panel per StateBench complexity class (R-trivial, Aperiodic, Soluble,
 Finite), read from a canonical state-bench test split, followed by a panel of
 scored CruxEval functions (notebooks/sensitivity_histogram.py). All panels are
 frequency histograms over the same bins and share the y-axis, so the
@@ -40,15 +40,33 @@ DEFAULT_STATE_BENCH_INPUT = (
 )
 DEFAULT_CRUXEVAL_INPUT = PROJECT_ROOT / "sensitivity-estimate/results/cruxeval-test.jsonl"
 
+
+def xcolor_tint(base_hex: str, percent: float, *, toward: str = "FFFFFF") -> tuple[float, float, float]:
+    """xcolor's ``base!percent!toward`` mix, e.g. ``stbase!80`` (toward white)."""
+
+    base = [int(base_hex[i : i + 2], 16) for i in (0, 2, 4)]
+    other = [int(toward[i : i + 2], 16) for i in (0, 2, 4)]
+    return tuple(  # type: ignore[return-value]
+        (percent / 100 * b + (1 - percent / 100) * o) / 255 for b, o in zip(base, other)
+    )
+
+
+# The paper's hierarchy diagram (state-bench-paper/tikz-figures/hierarchy.tex)
+# tints one base color per nested class shell. Bars take each shell's border
+# tint (its fills run down to stbase!5, too pale for bars), and bar outlines
+# and medians the diagram's label color, stbase!85!black, so the palest panel
+# stays legible.
+STBASE_HEX = "F28F3B"
+STATE_BENCH_EDGE_COLOR = xcolor_tint(STBASE_HEX, 85, toward="000000")
 # Panels in increasing group complexity, labelled as in dt_results.
 STATE_BENCH_PANELS = {
-    "r-trivial": "R-trivial",
-    "aperiodic": "Aperiodic",
-    "solvable": "Solvable",
-    "periodic": "Finite",
+    "r-trivial": ("R-trivial", xcolor_tint(STBASE_HEX, 80)),
+    "aperiodic": ("Aperiodic", xcolor_tint(STBASE_HEX, 60)),
+    "solvable": ("Soluble", xcolor_tint(STBASE_HEX, 40)),
+    "periodic": ("Finite", xcolor_tint(STBASE_HEX, 25)),
 }
 CRUXEVAL_LABEL = "CruxEval (code)"
-STATE_BENCH_COLOR = sns.color_palette("deep")[0]
+CRUXEVAL_COLOR = sns.color_palette("deep")[0]
 
 # Same fixed canvas as the single-row dt/pt summary figures (SUMMARY_* in
 # notebooks/dt_results.ipynb): 1.5x the line width by 1.75 in, included at
@@ -126,10 +144,27 @@ def read_cruxeval(path: Path, metric: str) -> list[float]:
     return values
 
 
-def plot_panel(axis: plt.Axes, values: list[float], title: str, color: object) -> None:
-    sns.histplot(x=values, bins=BINS, stat="proportion", color=color, ax=axis)
+def plot_panel(
+    axis: plt.Axes,
+    values: list[float],
+    title: str,
+    color: object,
+    edge_color: object | None = None,
+) -> None:
+    """Histogram one panel; ``edge_color`` outlines the bars and colors the median."""
+
+    sns.histplot(
+        x=values,
+        bins=BINS,
+        stat="proportion",
+        color=color,
+        alpha=1.0,
+        **({"edgecolor": edge_color, "linewidth": 0.4} if edge_color is not None else {}),
+        ax=axis,
+    )
     median = statistics.median(values)
-    axis.axvline(median, linestyle="--", linewidth=1, color=aes.darken(color, by=0.4))
+    median_color = edge_color if edge_color is not None else aes.darken(color, by=0.4)
+    axis.axvline(median, linestyle="--", linewidth=1, color=median_color)
     # Label on the side of the median with more room, clear of the line.
     left_of_line = median > 0.5
     axis.annotate(
@@ -150,10 +185,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     metric_label = args.metric.replace("_", " ").capitalize()
     state_bench_values = read_state_bench(args.state_bench, args.metric)
     panels = [
-        (label, state_bench_values[complexity], STATE_BENCH_COLOR)
-        for complexity, label in STATE_BENCH_PANELS.items()
+        (label, state_bench_values[complexity], color, STATE_BENCH_EDGE_COLOR)
+        for complexity, (label, color) in STATE_BENCH_PANELS.items()
     ]
-    panels.append((CRUXEVAL_LABEL, read_cruxeval(args.cruxeval, args.metric), aes.NONSEMANTIC_COLOR))
+    panels.append((CRUXEVAL_LABEL, read_cruxeval(args.cruxeval, args.metric), CRUXEVAL_COLOR, None))
 
     figure = plt.figure(figsize=(FIG_WIDTH_IN, FIG_HEIGHT_IN))
     grid = figure.add_gridspec(
@@ -166,10 +201,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         wspace=0.12,
     )
     axes: list[plt.Axes] = []
-    for index, (title, values, color) in enumerate(panels):
+    for index, (title, values, color, edge_color) in enumerate(panels):
         axis = figure.add_subplot(grid[0, index], sharey=axes[0] if axes else None)
         axes.append(axis)
-        plot_panel(axis, values, title, color)
+        plot_panel(axis, values, title, color, edge_color)
         axis.set_xlim(0.0, 1.0)
         axis.set_xticks([0.0, 0.5, 1.0])
         axis.set_xticks([0.25, 0.75], minor=True)
