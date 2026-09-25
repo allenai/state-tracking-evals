@@ -194,7 +194,7 @@ def plot(
         ax.set_title(COMPLEXITY_LABEL[complexity], fontsize=9, fontweight="normal")
         ax.label_outer()
     axes[0].set_ylabel("Accuracy")
-    axes[0].set_xlabel("Context length (tokens, log scale)")
+    axes[0].set_xlabel("Input length (tokens, log scale)")
     return fig
 
 
