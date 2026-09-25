@@ -1,11 +1,22 @@
-"""Runs subsampled state-bench evals against OpenAI API models.
+"""Runs subsampled state-bench evals against OpenAI, Claude, and Gemini models.
 
     uv run python scripts/eval_api.py --model gpt-4.1-mini --dry-run
     uv run python scripts/eval_api.py --model gpt-4.1-mini --samples-per-tier 10
     uv run python scripts/eval_api.py --model gpt-5-mini --reasoning-effort low
+    uv run python scripts/eval_api.py --model claude-opus-5 --reasoning-effort high
+    uv run python scripts/eval_api.py --model gemini-3-pro --reasoning-effort low
 
-Reads OPENAI_API_KEY (and HF_TOKEN, for the gated dataset) from the project's
-.env. Examples come from the solvable build (jacksonp-ai2/state-bench-solvable),
+The provider follows from the model id (claude-* is Anthropic, gemini-* is
+Google, anything else OpenAI) unless --provider names one; each provider's SDK
+lives in its own module under scripts/api_providers/. API keys are read from
+the project's .env -- OPENAI_API_KEY, ANTHROPIC_API_KEY, and GOOGLE_API_KEY or
+GEMINI_API_KEY -- along with HF_TOKEN for the gated dataset. Without
+--reasoning-effort each model runs at its own API default. Token counts are
+normalized across providers: output_tokens is billed output including any
+reasoning, and reasoning_tokens is its reasoning share where the API reports it
+(Anthropic does not). A reply cut off by --max-output-tokens is recorded with
+status 'incomplete' and a declined one with status 'refusal'; both score wrong.
+ Examples come from the solvable build (jacksonp-ai2/state-bench-solvable),
 the only dataset that renders all four complexity classes -- r-trivial,
 aperiodic, solvable, periodic -- from the same periodic sources, all with the
 integer-code-modular formatter. Each (complexity, context tier) cell is
@@ -40,11 +51,20 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from huggingface_hub import HfFileSystem
-import openai
 import pyarrow.parquet as pq
 from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# scripts/ is on sys.path when this runs as a script, but not when
+# plot_api_results imports it as scripts.eval_api.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from api_providers import (  # noqa: E402
+    PROVIDERS,
+    ProviderError,
+    detect_provider,
+    load_provider,
+)
+
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "state-bench" / "data" / "api-evals"
 
 DATASET_REPO = "jacksonp-ai2/state-bench-solvable"
@@ -216,7 +236,7 @@ def parse_letter(text: str, num_choices: int) -> str | None:
 
 
 async def score_doc(
-    client: openai.AsyncOpenAI,
+    provider,
     args: argparse.Namespace,
     doc: dict,
     config: str,
@@ -227,6 +247,7 @@ async def score_doc(
     gold = LETTERS[doc["correct_choice_index"]] if choice else gold_state(doc)
     record = {
         "model": args.model,
+        "provider": args.provider,
         "reasoning_effort": args.reasoning_effort,
         "task_format": args.task_format,
         "config": config,
@@ -241,18 +262,18 @@ async def score_doc(
         "gold": gold,
     }
     prompt = build_choice_prompt(doc) if choice else build_generate_prompt(doc)
-    request = {"model": args.model, "input": prompt}
-    if args.reasoning_effort:
-        request["reasoning"] = {"effort": args.reasoning_effort}
-    if args.max_output_tokens:
-        request["max_output_tokens"] = args.max_output_tokens
     async with semaphore:
         try:
-            response = await client.responses.create(**request)
-        except openai.APIError as error:
-            return {**record, "error": f"{type(error).__name__}: {error}"}
+            completion = await provider.complete(
+                prompt,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                max_output_tokens=args.max_output_tokens,
+            )
+        except ProviderError as error:
+            return {**record, "error": str(error)}
 
-    text = response.output_text or ""
+    text = completion.text
     if choice:
         prediction = parse_letter(text, len(doc["choices"]))
         scores = {"correct": prediction == gold}
@@ -263,17 +284,16 @@ async def score_doc(
             "correct": matched == len(gold),
             "variable_accuracy": matched / len(gold),
         }
-    usage = response.usage
-    details = getattr(usage, "output_tokens_details", None) if usage else None
     return {
         **record,
         "prediction": prediction,
         **scores,
         "output_text": text,
-        "status": response.status,
-        "input_tokens": usage.input_tokens if usage else None,
-        "output_tokens": usage.output_tokens if usage else None,
-        "reasoning_tokens": getattr(details, "reasoning_tokens", None),
+        "status": completion.status,
+        "stop_reason": completion.stop_reason,
+        "input_tokens": completion.input_tokens,
+        "output_tokens": completion.output_tokens,
+        "reasoning_tokens": completion.reasoning_tokens,
         "error": None,
     }
 
@@ -297,20 +317,22 @@ def drop_errored(path: Path) -> None:
     path.write_text("".join(rows))
 
 
-def describe_api_key(source: str) -> str:
-    """Masked OPENAI_API_KEY with its origin, safe to print."""
-    key = os.environ.get("OPENAI_API_KEY", "")
-    if not key:
-        return "OPENAI_API_KEY: not set"
-    return f"OPENAI_API_KEY: {key[:8]}...{key[-4:]} ({len(key)} chars, from {source})"
+def describe_api_key(key_env: tuple[str, ...], shell_env: set[str]) -> str:
+    """Masked API key the provider's SDK will use, with its origin; safe to print."""
+    for name in key_env:
+        key = os.environ.get(name, "")
+        if key:
+            source = "shell environment" if name in shell_env else ".env"
+            return f"{name}: {key[:8]}...{key[-4:]} ({len(key)} chars, from {source})"
+    return f"{' / '.join(key_env)}: not set"
 
 
-async def check_api_key(model: str) -> str:
-    """Confirm the key authenticates and can see `model`; retrieval is free."""
+async def check_api_key(provider, model: str) -> str:
+    """Confirm the key authenticates and can see `model`; the lookup is free."""
     try:
-        await openai.AsyncOpenAI().models.retrieve(model)
-    except openai.APIError as error:
-        return f"key check failed: {type(error).__name__}: {error}"
+        await provider.check(model)
+    except ProviderError as error:
+        return f"key check failed: {error}"
     return f"key check ok: {model} is available"
 
 
@@ -326,7 +348,15 @@ def model_dir_name(args: argparse.Namespace) -> str:
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
-        "--model", required=True, help="OpenAI model id, e.g. gpt-4.1-mini"
+        "--model",
+        required=True,
+        help="Model id, e.g. gpt-4.1-mini, claude-opus-5, gemini-3-pro",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=PROVIDERS,
+        default=None,
+        help="API to call (default: inferred from the model id)",
     )
     parser.add_argument("--samples-per-tier", type=int, default=10)
     parser.add_argument(
@@ -344,9 +374,11 @@ async def main() -> None:
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument(
         "--reasoning-effort",
-        choices=["minimal", "low", "medium", "high"],
+        choices=["none", "minimal", "low", "medium", "high", "xhigh", "max"],
         default=None,
-        help="Only for reasoning models; also becomes part of the output directory name",
+        help="Reasoning depth (OpenAI reasoning effort, Claude effort with adaptive "
+        "thinking, Gemini thinking level); omit for the model's default. Also "
+        "becomes part of the output directory name",
     )
     parser.add_argument(
         "--task-format",
@@ -377,11 +409,27 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
+    args.provider = args.provider or detect_provider(args.model)
     # load_dotenv never overrides a variable already in the environment, so a
     # key exported in the shell wins over the one in .env.
-    key_source = "shell environment" if "OPENAI_API_KEY" in os.environ else ".env"
+    shell_env = set(os.environ)
     load_dotenv(REPO_ROOT / ".env")
-    print(describe_api_key(key_source))
+    try:
+        provider = load_provider(args.provider)
+    except (TypeError, ValueError) as error:
+        # The Gemini client refuses to construct without a key.
+        parser.error(f"could not create the {args.provider} client: {error}")
+    if (
+        args.reasoning_effort
+        and provider.EFFORTS
+        and args.reasoning_effort not in provider.EFFORTS
+    ):
+        parser.error(
+            f"--reasoning-effort {args.reasoning_effort} is not accepted by "
+            f"{args.provider}; choose from {', '.join(provider.EFFORTS)}"
+        )
+    print(f"provider: {args.provider}")
+    print(describe_api_key(provider.KEY_ENV, shell_env))
 
     jobs = []
     for complexity in args.complexities:
@@ -414,17 +462,20 @@ async def main() -> None:
         f"{len(pending)} to run (~{pending_tokens / 1e6:.2f}M input tokens, Dolma tokenizer)"
     )
     if args.dry_run:
-        print(await check_api_key(args.model))
+        print(await check_api_key(provider, args.model))
         return
     if not pending:
         return
+    # A bad key or model id would otherwise fail every request in the run.
+    key_check = await check_api_key(provider, args.model)
+    if not key_check.startswith("key check ok"):
+        raise SystemExit(f"{key_check}\nNothing was sent; fix the key or model id.")
 
     drop_errored(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    client = openai.AsyncOpenAI(max_retries=8, timeout=900)
     semaphore = asyncio.Semaphore(args.concurrency)
     tasks = [
-        asyncio.create_task(score_doc(client, args, doc, config, tier, semaphore))
+        asyncio.create_task(score_doc(provider, args, doc, config, tier, semaphore))
         for doc, config, tier in pending
     ]
     errors = 0
