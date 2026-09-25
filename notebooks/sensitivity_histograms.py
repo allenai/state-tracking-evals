@@ -2,7 +2,7 @@
 """Five-panel sensitivity histogram: each StateBench class and CruxEval code.
 
 One panel per StateBench complexity class (R-trivial, Aperiodic, Soluble,
-Finite), read from a canonical state-bench test split, followed by a panel of
+General finite), read from a canonical state-bench test split, followed by a panel of
 scored CruxEval functions (notebooks/sensitivity_histogram.py). All panels are
 frequency histograms over the same bins and share the y-axis, so the
 distributions can be read against each other directly, and each marks its
@@ -63,7 +63,7 @@ STATE_BENCH_PANELS = {
     "r-trivial": ("R-trivial", xcolor_tint(STBASE_HEX, 80)),
     "aperiodic": ("Aperiodic", xcolor_tint(STBASE_HEX, 60)),
     "solvable": ("Soluble", xcolor_tint(STBASE_HEX, 40)),
-    "periodic": ("Finite", xcolor_tint(STBASE_HEX, 25)),
+    "periodic": ("General finite", xcolor_tint(STBASE_HEX, 25)),
 }
 CRUXEVAL_LABEL = "CruxEval (code)"
 # The same treatment in seaborn's deep blue: a lightened fill, outlined and

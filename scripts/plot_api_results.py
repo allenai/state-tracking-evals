@@ -58,7 +58,7 @@ COMPLEXITY_LABEL = {
     "r-trivial": "R-trivial",
     "aperiodic": "Aperiodic",
     "solvable": "Soluble",
-    "periodic": "Finite",
+    "periodic": "General finite",
 }
 
 # Same fixed-canvas geometry as pt_results' paper_figure.
