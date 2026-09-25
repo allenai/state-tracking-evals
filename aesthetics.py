@@ -525,8 +525,8 @@ STATE_BENCH_MODEL_ORDER: tuple[str, ...] = (
     "transformer-nope",
     "hybrid",
     "hybrid-sdp",
-    "gdn-sdp",
     "gdn-full",
+    "gdn-sdp",
 )
 STATE_BENCH_MODEL_FAMILIES: dict[str, str] = {
     "transformer-rope": "Transformer",
