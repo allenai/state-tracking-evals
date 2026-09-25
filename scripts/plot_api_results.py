@@ -3,6 +3,7 @@
     uv run python scripts/plot_api_results.py
     uv run python scripts/plot_api_results.py --models gpt-4.1-mini gpt-5-mini__low
     uv run python scripts/plot_api_results.py --include-mc
+    uv run python scripts/plot_api_results.py --push
 
 Reads every <model>/predictions.jsonl that scripts/eval_api.py wrote under
 state-bench/data/api-evals/ and draws the API counterpart of the pt_results
@@ -17,12 +18,18 @@ letter for multiple-choice (`__mc`) runs; the dashed chance line is drawn only
 for multiple-choice runs, since guessing a full free-form state is ~0.
 Multiple-choice runs are left out unless --include-mc is passed or they are
 named in --models.
+
+--push publishes a changed figure the way scripts/render_figures.sh --push
+does: commit it in state-bench-paper, rebase onto its origin/main (Overleaf
+syncs land there), push, then bump the submodule pointer in this repo and push
+that too.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -44,6 +51,7 @@ DEFAULT_FIGURE = (
     / "figures"
     / "api_accuracy_by_context_length_aggregated"
 )
+PAPER_DIR = REPO_ROOT / "state-bench-paper"
 MIN_BIN_EXAMPLES = 3
 # Display labels for complexity classes, matching pt_results.
 COMPLEXITY_LABEL = {
@@ -190,6 +198,58 @@ def plot(
     return fig
 
 
+def git(*args: str, cwd: Path) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def push_figures(paths: list[Path]) -> None:
+    """Commit and push changed figures in the paper, then bump its pointer here."""
+    relative = []
+    for path in paths:
+        if not path.resolve().is_relative_to(PAPER_DIR):
+            raise SystemExit(
+                f"--push only publishes figures inside {PAPER_DIR}: {path}"
+            )
+        relative.append(str(path.resolve().relative_to(PAPER_DIR)))
+    changed = [
+        path
+        for path in relative
+        if git("status", "--porcelain", "--", path, cwd=PAPER_DIR)
+    ]
+    if not changed:
+        print(">> No figure changed; nothing to push.")
+        return
+    git("fetch", "-q", "origin", cwd=PAPER_DIR)
+    git("add", "--", *changed, cwd=PAPER_DIR)
+    git(
+        "commit",
+        "-q",
+        "-m",
+        "Regenerate API model figures",
+        "--",
+        *changed,
+        cwd=PAPER_DIR,
+    )
+    git("rebase", "-q", "origin/main", cwd=PAPER_DIR)
+    git("push", "-q", "origin", "main", cwd=PAPER_DIR)
+    print(f">> state-bench-paper: {git('log', '--oneline', '-1', cwd=PAPER_DIR)}")
+
+    # Only the pointer is committed here, whatever else happens to be staged.
+    git(
+        "commit",
+        "-q",
+        "-m",
+        "Bump state-bench-paper for regenerated API figures",
+        "--",
+        "state-bench-paper",
+        cwd=REPO_ROOT,
+    )
+    git("push", "-q", "origin", "main", cwd=REPO_ROOT)
+    print(f">> {REPO_ROOT.name}: {git('log', '--oneline', '-1', cwd=REPO_ROOT)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--input-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
@@ -207,6 +267,12 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_FIGURE, help="Path stem")
     parser.add_argument(
         "--png", action="store_true", help="Also write a PNG next to the PDF"
+    )
+    parser.add_argument(
+        "--push",
+        action="store_true",
+        help="Commit and push the figure in state-bench-paper, then bump the "
+        "submodule pointer here (as scripts/render_figures.sh --push does)",
     )
     args = parser.parse_args()
 
@@ -251,6 +317,8 @@ def main() -> None:
         args.output, fig=fig, tight=False, save_png=args.png
     )
     print(f"Saved {pdf_path}" + (f" and {png_path}" if png_path else ""))
+    if args.push:
+        push_figures([path for path in (pdf_path, png_path) if path])
 
 
 if __name__ == "__main__":
