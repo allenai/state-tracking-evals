@@ -31,15 +31,17 @@ PRIORITY = "urgent"
 IMAGE = "yashasbls/olmo-eval-vllm-g79d31a3f9-tch2100cu128-2026-05-23"
 TRANSFORMERS_FORK = "transformers @ git+https://github.com/jopetty/transformers.git@olmo-3.5-hybrid-state-bench"
 HF_HOME = "/weka/oe-eval-default/oyvindt/hf-cache"
-UV_CACHE = "/weka/oe-eval-default/olmo-eval-pypi-cache"
 
 # Install into the image's venv, constrained to its torch/CUDA/triton wheels so
 # fla's kernels match the preinstalled torch.
 INSTALL = " && ".join([
-    "export VIRTUAL_ENV=/opt/venv UV_CACHE_DIR=" + UV_CACHE,
-    "uv pip freeze -q | grep -E '^(torch|nvidia-|triton)' > /tmp/cuda-constraints.txt",
-    "uv pip install -q -c /tmp/cuda-constraints.txt numpy datasets flash-linear-attention",
-    f"uv --no-config pip install -q --reinstall-package transformers '{TRANSFORMERS_FORK}' -c /tmp/cuda-constraints.txt",
+    # A job-local uv cache: the shared weka cache can block on locks while many
+    # eval jobs install at once.
+    "export VIRTUAL_ENV=/opt/venv UV_CACHE_DIR=/tmp/uv-cache",
+    "uv pip freeze | grep -E '^(torch|nvidia-|triton)' > /tmp/cuda-constraints.txt",
+    "uv pip install -c /tmp/cuda-constraints.txt numpy datasets flash-linear-attention",
+    f"uv --no-config pip install --reinstall-package transformers '{TRANSFORMERS_FORK}' -c /tmp/cuda-constraints.txt",
+    f"{'/opt/venv/bin/python'} -c 'import fla, transformers, torch; print(\"env ok\", torch.__version__, transformers.__version__)'",
 ])
 PYTHON = "/opt/venv/bin/python"
 
