@@ -48,7 +48,7 @@ def main() -> None:
         name = experiment["name"]
         if args.only and not any(fragment in name for fragment in args.only):
             continue
-        is_metadata = name == "spectra-doc-metadata"
+        is_metadata = name.startswith("spectra-doc-metadata")
         target = RESULTS / "doc_metadata" if is_metadata else RESULTS / "spectra" / name
         marker = target / f".fetched-{experiment['id']}"
         if marker.exists() and not args.refetch:
