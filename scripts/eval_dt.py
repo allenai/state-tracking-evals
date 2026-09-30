@@ -138,7 +138,6 @@ HARNESS_OVERRIDES = [
     ("provider.num_instances", "{num_gpus}"),
     ("provider.kind", "hf"),
     ("provider.trust_remote_code", "true"),
-    ("provider.dtype", "bfloat16"),
     (
         "provider.dependencies",
         "[transformers @ git+https://github.com/jopetty/transformers.git@olmo-3.5-hybrid-state-bench]",
@@ -160,7 +159,12 @@ BEAKER_NAME_LIMIT = 128
 BEAKER_DEDUP_SUFFIX_LEN = 5
 
 
-def experiment_name(model_path: str, formatter: str, tier: str) -> str:
+# Inference dtype; the paper's evals all use bfloat16. Other dtypes tag the
+# experiment name so a precision rerun never collides with the bf16 job.
+DEFAULT_DTYPE = "bfloat16"
+
+
+def experiment_name(model_path: str, formatter: str, tier: str, dtype: str = DEFAULT_DTYPE) -> str:
     """Beaker experiment name for one model/tier job; must leave room for a rerun suffix.
 
     The notebooks select results by model path and task, and read training
@@ -168,6 +172,8 @@ def experiment_name(model_path: str, formatter: str, tier: str) -> str:
     readable.
     """
     name = f"{get_model_short_name(model_path)}-{formatter}_{tier}"
+    if dtype != DEFAULT_DTYPE:
+        name = f"{name}-{dtype}"
     if len(name) + BEAKER_DEDUP_SUFFIX_LEN > BEAKER_NAME_LIMIT:
         raise ValueError(
             f"experiment name is {len(name)} characters; Beaker allows "
@@ -195,6 +201,7 @@ def build_command(
     num_gpus: int = NUM_GPUS,
     cluster: str = CLUSTER,
     group: str = GROUP,
+    dtype: str = DEFAULT_DTYPE,
     workspace: str = WORKSPACE,
 ) -> list[str]:
     cmd = [
@@ -208,10 +215,11 @@ def build_command(
         "-H",
         "default",
         "-n",
-        experiment_name(model_path, formatter, tier),
+        experiment_name(model_path, formatter, tier, dtype),
     ]
     for key, value in HARNESS_OVERRIDES:
         cmd.extend(["-o", f"{key}={value.replace('{num_gpus}', str(num_gpus))}"])
+    cmd.extend(["-o", f"provider.dtype={dtype}"])
     cmd.extend(["-o", f"provider.max_model_len={max_model_len_for(tier)}"])
     cmd.extend(["-o", f"batching.chunk_size={BATCH_CHUNK_SIZE}"])
     cmd.extend(["-m", model_path])
@@ -348,6 +356,13 @@ def parse_args() -> argparse.Namespace:
             "task's own seed. Omit to evaluate every instance."
         ),
     )
+    parser.add_argument(
+        "--dtype",
+        default=DEFAULT_DTYPE,
+        choices=["bfloat16", "float32"],
+        help="Inference dtype. Non-default dtypes are tagged in the experiment name; "
+        "launch them into their own --group so the bf16 notebooks don't pick them up.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -380,6 +395,7 @@ def main() -> None:
                             num_gpus=args.gpus,
                             cluster=args.cluster,
                             group=args.group,
+                            dtype=args.dtype,
                             workspace=args.workspace,
                         )
                         if args.dry_run:
