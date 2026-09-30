@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKSPACE = "ai2/beyond-state"
 BUDGET = "ai2/oe-other"
 # Any weka-mounted cluster; jobs take whichever has GPUs free first.
-CLUSTERS = ("ai2/saturn", "ai2/jupiter", "ai2/ceres")
+CLUSTERS = ("ai2/holmes", "ai2/titan", "ai2/saturn", "ai2/jupiter", "ai2/ceres")
 PRIORITY = "urgent"
 # The eval image (scripts/eval_dt.py EVAL_IMAGE): torch + CUDA in /opt/venv.
 IMAGE = "yashasbls/olmo-eval-vllm-g79d31a3f9-tch2100cu128-2026-05-23"
