@@ -119,7 +119,8 @@ def gantry_command(job: Job, *, cluster: str, priority: str) -> list[str]:
         "--gpus", str(job.gpus),
         "--weka", "oe-training-default:/weka/oe-training-default",
         "--weka", "oe-eval-default:/weka/oe-eval-default",
-        "--secret-env", "HF_TOKEN=JACKSONP_HF_TOKEN",
+        "--gh-token-secret", "jacksonp_GITHUB_TOKEN",
+        "--secret-env", "HF_TOKEN=jacksonp_HF_TOKEN",
         "--env", f"HF_HOME={HF_HOME}",
         "--env", "PYTORCH_ALLOC_CONF=expandable_segments:True",
         # This repo's submodules use SSH remotes the job cannot clone and the
