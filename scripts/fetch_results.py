@@ -129,7 +129,15 @@ def get_job_status(exp: dict) -> str:
 DOWNLOAD_OUTPUT_LOCK = threading.Lock()
 
 
-def download_results(exp: dict, output_dir: Path, verbose: bool = False) -> Optional[Path]:
+# Result datasets carry a requests/ dump per task (100+ MiB at the long tiers)
+# alongside the small metrics and predictions files. Analyses that only read
+# per-example scores can fetch just these prefixes.
+SCORE_FILE_PREFIXES = ("metrics.json", "metrics/", "predictions/")
+
+
+def download_results(
+    exp: dict, output_dir: Path, verbose: bool = False, skip_requests: bool = False
+) -> Optional[Path]:
     exp_id = exp["id"]
     exp_dir = output_dir / exp_id
     if exp_dir.exists() and (exp_dir / "main" / "metrics.json").exists():
@@ -149,13 +157,23 @@ def download_results(exp: dict, output_dir: Path, verbose: bool = False) -> Opti
     if tmp_dir.exists():
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    cmd = ["beaker", "dataset", "fetch", "--output", str(tmp_dir / "main"), dataset_id]
+    base_cmd = ["beaker", "dataset", "fetch", "--output", str(tmp_dir / "main"), dataset_id]
+    # `--prefix` takes one value, so a score-only fetch runs once per prefix.
+    cmds = (
+        [[*base_cmd, "--prefix", prefix] for prefix in SCORE_FILE_PREFIXES]
+        if skip_requests
+        else [base_cmd]
+    )
     with DOWNLOAD_OUTPUT_LOCK if verbose else contextlib.nullcontext():
         if verbose:
             tqdm.write(f"  [downloading] {exp_id}  dataset={dataset_id}")
-            result = subprocess.run(cmd, text=True)
-        else:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+        for cmd in cmds:
+            if verbose:
+                result = subprocess.run(cmd, text=True)
+            else:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                break
     if result.returncode != 0:
         stderr = result.stderr.strip() if result.stderr else "(see output above)"
         tqdm.write(f"  [warn] Could not download dataset {dataset_id} for {exp_id}: {stderr}")
@@ -201,6 +219,11 @@ def main(
     parser.add_argument("--completed-only", action="store_true", help="Skip experiments still running")
     parser.add_argument("--no-download", action="store_true", help="Only list, don't download")
     parser.add_argument("--workers", type=int, default=32, help="Parallel download workers")
+    parser.add_argument(
+        "--skip-requests",
+        action="store_true",
+        help="Fetch only metrics and predictions, not the large per-task requests dumps",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Show per-file download progress from beaker dataset fetch")
     args = parser.parse_args()
 
@@ -266,7 +289,9 @@ def main(
                 tqdm.write(f"  {label}{exp_name}  id={exp_id}  status={status}")
             return None
 
-        exp_dir = download_results(exp, group_dir, verbose=args.verbose)
+        exp_dir = download_results(
+            exp, group_dir, verbose=args.verbose, skip_requests=args.skip_requests
+        )
         if exp_dir is None:
             return None
 

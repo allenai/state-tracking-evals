@@ -1,0 +1,164 @@
+"""Launch spectra jobs on Beaker with gantry.
+
+Jobs clone this repo at the current commit (which must be pushed), install the
+analysis dependencies into the eval image's ``/opt/venv`` against its pinned
+torch/CUDA wheels, and run ``python -m spectra.run`` (or the metadata dump).
+Results land in each job's result dataset under ``/results``; fetch them with
+``spectra/fetch.py``.
+
+Suites (``--suite``) name the experiment grid; ``--dry-run`` prints commands::
+
+    uv run python -m spectra.launch --suite pilot --dry-run
+    uv run python -m spectra.launch --suite baseline
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shlex
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+WORKSPACE = "ai2/beyond-state"
+BUDGET = "ai2/oe-other"
+CLUSTER = "ai2/saturn"
+PRIORITY = "urgent"
+# The eval image (scripts/eval_dt.py EVAL_IMAGE): torch + CUDA in /opt/venv.
+IMAGE = "yashasbls/olmo-eval-vllm-g79d31a3f9-tch2100cu128-2026-05-23"
+TRANSFORMERS_FORK = "transformers @ git+https://github.com/jopetty/transformers.git@olmo-3.5-hybrid-state-bench"
+HF_HOME = "/weka/oe-eval-default/oyvindt/hf-cache"
+UV_CACHE = "/weka/oe-eval-default/olmo-eval-pypi-cache"
+
+# Install into the image's venv, constrained to its torch/CUDA/triton wheels so
+# fla's kernels match the preinstalled torch.
+INSTALL = " && ".join([
+    "export VIRTUAL_ENV=/opt/venv UV_CACHE_DIR=" + UV_CACHE,
+    "uv pip freeze -q | grep -E '^(torch|nvidia-|triton)' > /tmp/cuda-constraints.txt",
+    "uv pip install -q -c /tmp/cuda-constraints.txt numpy datasets flash-linear-attention",
+    f"uv --no-config pip install -q --reinstall-package transformers '{TRANSFORMERS_FORK}' -c /tmp/cuda-constraints.txt",
+])
+PYTHON = "/opt/venv/bin/python"
+
+
+@dataclass
+class Job:
+    name: str
+    args: list[str]
+    gpus: int = 1
+    module: str = "spectra.run"
+    env: dict[str, str] = field(default_factory=dict)
+
+
+def run_job(model: str, training: str, eval_class: str, *, dtype: str = "bfloat16",
+            intervention: dict | None = None, step: int | None = None, extra: list[str] | None = None,
+            tag: str = "") -> Job:
+    args = ["--model-type", model, "--training", training, "--eval-class", eval_class, "--dtype", dtype]
+    if intervention:
+        args += ["--intervention", json.dumps(intervention)]
+    if step is not None:
+        args += ["--step", str(step)]
+    args += extra or []
+    parts = ["spectra", model, training, eval_class, dtype]
+    if step is not None:
+        parts.append(f"step{step}")
+    if tag:
+        parts.append(tag)
+    return Job(name="-".join(parts), args=args)
+
+
+MATCHED = [("periodic", "periodic"), ("solvable", "solvable"), ("aperiodic", "aperiodic")]
+GDN_MODELS = ["gdn-full", "hybrid", "gdn-sdp", "hybrid-sdp"]
+PM_MODELS = ["gdn-full", "hybrid"]
+
+
+def suite(name: str) -> list[Job]:
+    if name == "pilot":
+        return [run_job("gdn-full", "periodic", "periodic",
+                        extra=["--tiers", "tokens_under_2k", "tokens_64k", "--per-tier", "2"], tag="pilot")]
+    if name == "metadata":
+        return [Job(name="spectra-doc-metadata", args=[], gpus=0, module="spectra.dump_doc_metadata")]
+    if name == "baseline":
+        return [run_job(m, t, e) for m in GDN_MODELS for t, e in MATCHED]
+    if name == "precision":
+        return [run_job(m, t, e, dtype="float32") for m in PM_MODELS for t, e in MATCHED[:2]]
+    if name == "interventions":
+        interventions = {
+            "snapreflect": {"snap_reflect": 0.02},
+            "snapalpha": {"snap_alpha": 1e-3},
+            "alphahalf": {"alpha_power": 0.5},
+            "snapboth": {"snap_reflect": 0.02, "snap_alpha": 1e-3},
+        }
+        jobs = [
+            run_job(m, t, e, intervention=iv, tag=tag)
+            for m in PM_MODELS for t, e in MATCHED[:2] for tag, iv in interventions.items()
+        ]
+        jobs += [run_job("hybrid", t, e, intervention={"attn_window": 4096}, tag="attnwindow") for t, e in MATCHED[:2]]
+        return jobs
+    if name == "training-steps":
+        steps = {"gdn-full": (3695, 4106, 7800), "hybrid": (3627, 4030, 7656)}
+        return [run_job(m, "periodic", "periodic", step=s) for m in PM_MODELS for s in steps[m]]
+    raise ValueError(f"unknown suite {name!r}")
+
+
+SUITES = ("pilot", "metadata", "baseline", "precision", "interventions", "training-steps")
+
+
+def gantry_command(job: Job, *, cluster: str, priority: str) -> list[str]:
+    command = [
+        "gantry", "run",
+        "--name", job.name,
+        "--workspace", WORKSPACE,
+        "--budget", BUDGET,
+        "--cluster", cluster,
+        "--priority", priority,
+        "--beaker-image", IMAGE,
+        "--gpus", str(job.gpus),
+        "--weka", "oe-training-default:/weka/oe-training-default",
+        "--weka", "oe-eval-default:/weka/oe-eval-default",
+        "--secret-env", "HF_TOKEN=JACKSONP_HF_TOKEN",
+        "--env", f"HF_HOME={HF_HOME}",
+        "--env", "PYTORCH_ALLOC_CONF=expandable_segments:True",
+        # This repo's submodules use SSH remotes the job cannot clone and the
+        # analysis does not need: an unmatched submodule.active pathspec turns
+        # gantry's `git submodule update --init` into a no-op.
+        "--env", "GIT_CONFIG_COUNT=1",
+        "--env", "GIT_CONFIG_KEY_0=submodule.active",
+        "--env", "GIT_CONFIG_VALUE_0=__no_submodules__",
+        "--no-python",
+        "--install", INSTALL,
+        "--results", "/results",
+        "--no-logs",
+        "--yes",
+    ]
+    for key, value in job.env.items():
+        command += ["--env", f"{key}={value}"]
+    return [*command, "--", PYTHON, "-m", job.module, *job.args]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--suite", nargs="+", required=True, choices=SUITES)
+    parser.add_argument("--cluster", default=CLUSTER)
+    parser.add_argument("--priority", default=PRIORITY)
+    parser.add_argument("--only", nargs="*", default=None, help="Launch only jobs whose name contains one of these")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    jobs = [job for name in args.suite for job in suite(name)]
+    if args.only:
+        jobs = [job for job in jobs if any(fragment in job.name for fragment in args.only)]
+    for job in jobs:
+        command = gantry_command(job, cluster=args.cluster, priority=args.priority)
+        if args.dry_run:
+            print(shlex.join(command))
+        else:
+            subprocess.run(["uv", "run", *command], check=True, cwd=REPO_ROOT)
+    print(f"\n{'Would launch' if args.dry_run else 'Launched'} {len(jobs)} job(s).")
+
+
+if __name__ == "__main__":
+    main()
