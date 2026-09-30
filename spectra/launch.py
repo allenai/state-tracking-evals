@@ -83,6 +83,9 @@ def suite(name: str) -> list[Job]:
                         extra=["--tiers", "tokens_under_2k", "tokens_64k", "--per-tier", "2"], tag="pilot")]
     if name == "metadata":
         return [Job(name="spectra-doc-metadata", args=[], gpus=0, module="spectra.dump_doc_metadata")]
+    if name == "metadata-solvable":
+        return [Job(name="spectra-doc-metadata-solvable", args=["--repos", "jacksonp-ai2/state-bench-solvable"],
+                    gpus=0, module="spectra.dump_doc_metadata")]
     if name == "baseline":
         return [run_job(m, t, e) for m in GDN_MODELS for t, e in MATCHED]
     if name == "precision":
@@ -106,7 +109,7 @@ def suite(name: str) -> list[Job]:
     raise ValueError(f"unknown suite {name!r}")
 
 
-SUITES = ("pilot", "metadata", "baseline", "precision", "interventions", "training-steps")
+SUITES = ("pilot", "metadata", "metadata-solvable", "baseline", "precision", "interventions", "training-steps")
 
 
 def gantry_command(job: Job, *, cluster: str, priority: str) -> list[str]:

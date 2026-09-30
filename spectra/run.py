@@ -49,6 +49,8 @@ CHECKPOINT_STEPS = {
 }
 MODULAR_TRAINING = {"solvable"}
 DATASET_REPO = "allenai/state-bench"
+# Models trained on the solvable build are evaluated on its own test repo.
+MODULAR_DATASET_REPO = "jacksonp-ai2/state-bench-solvable"
 TOKENIZER = "allenai/Olmo-3-1025-7B"
 
 
@@ -66,14 +68,14 @@ def eval_subset(training: str, eval_class: str) -> str:
 # Sampling
 
 
-def sample_rows(subset: str, tiers: list[str], per_tier: int, num_variables: list[int] | None,
+def sample_rows(repo: str, subset: str, tiers: list[str], per_tier: int, num_variables: list[int] | None,
                 max_filler: float, seed: int) -> list[dict]:
     """Deterministic, variable-count-stratified sample of eval rows per tier."""
     from datasets import load_dataset
 
     rows: list[dict] = []
     for tier in tiers:
-        split = load_dataset(DATASET_REPO, subset, split=f"test__{tier}")
+        split = load_dataset(repo, subset, split=f"test__{tier}")
         keep = [
             row for row in split
             if float(row.get("filler_proportion") or 0.0) <= max_filler
@@ -442,7 +444,8 @@ def main(argv=None) -> None:
     model = load_model(path, args.dtype, device)
     log.info("loaded %s (%s); layer types %s", path, args.dtype, model.config.layer_types)
     subset = eval_subset(args.training, args.eval_class)
-    rows = sample_rows(subset, args.tiers, args.per_tier, args.num_variables, args.max_filler, args.seed)
+    repo = MODULAR_DATASET_REPO if args.training in MODULAR_TRAINING else DATASET_REPO
+    rows = sample_rows(repo, subset, args.tiers, args.per_tier, args.num_variables, args.max_filler, args.seed)
     if not rows:
         raise RuntimeError(f"no rows sampled from {subset} {args.tiers}")
 
@@ -455,6 +458,7 @@ def main(argv=None) -> None:
     run_meta = {
         "args": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()},
         "model_path": str(path),
+        "dataset": repo,
         "subset": subset,
         "intervention": asdict(intervention),
         "allow_neg_eigval": bool(model.config.linear_allow_neg_eigval),

@@ -18,15 +18,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import results_io as rio  # noqa: E402
 
-DATASET = "allenai/state-bench"
-SUBSETS = (
-    "integer-code--r-trivial",
-    "integer-code--aperiodic",
-    "integer-code--periodic",
-    "integer-code-modular--r-trivial",
-    "integer-code-modular--aperiodic",
-    "integer-code-modular--periodic",
-    "integer-code-modular--solvable",
+# (dataset repo, subset). The modular (solvable-trained) test set is its own repo.
+SOURCES = (
+    ("allenai/state-bench", "integer-code--r-trivial"),
+    ("allenai/state-bench", "integer-code--aperiodic"),
+    ("allenai/state-bench", "integer-code--periodic"),
+    ("jacksonp-ai2/state-bench-solvable", "integer-code-modular--r-trivial"),
+    ("jacksonp-ai2/state-bench-solvable", "integer-code-modular--aperiodic"),
+    ("jacksonp-ai2/state-bench-solvable", "integer-code-modular--periodic"),
+    ("jacksonp-ai2/state-bench-solvable", "integer-code-modular--solvable"),
 )
 TIERS = (
     "tokens_under_2k", "tokens_4k", "tokens_8k", "tokens_16k", "tokens_32k", "tokens_64k",
@@ -43,13 +43,16 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("/results/doc_metadata"))
+    parser.add_argument("--repos", nargs="*", default=None, help="Only these dataset repos")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    for subset in SUBSETS:
+    for repo, subset in SOURCES:
+        if args.repos and repo not in args.repos:
+            continue
         for tier in TIERS:
             split = f"test__{tier}"
             try:
-                rows = rio.cached_doc_metadata(DATASET, subset, split, FIELDS, args.out)
+                rows = rio.cached_doc_metadata(repo, subset, split, FIELDS, args.out)
             except Exception as error:  # noqa: BLE001 - some subset/tier pairs do not exist
                 logging.warning("skipped %s/%s: %s", subset, split, error)
                 continue
