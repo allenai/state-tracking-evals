@@ -79,6 +79,12 @@ def test_token_layout_roles_and_boundaries():
     assert layout.statement_end_token.tolist() == [7, 11, 23]
 
 
+def test_clean_endpoints_skip_half_applied_swaps():
+    p = program("a <- 1; b <- 2; TMP <- a; a <- b; b <- TMP; TMP <- b; c <- 3; TMP <- (TMP + 1) mod 5;")
+    # Not after 2 (TMP <- a) or 3 (a <- b): the swap is half-applied there.
+    assert replay.clean_endpoints(p).tolist() == [0, 1, 4, 5, 6, 7]
+
+
 def test_log_spaced_checkpoints_start_after_all_registers_defined():
     body = "a <- 1; b <- 2; " + " ".join("TMP <- a; a <- b; b <- TMP;" for _ in range(50))
     p = program(body)
@@ -86,6 +92,7 @@ def test_log_spaced_checkpoints_start_after_all_registers_defined():
     assert checkpoints[0] >= replay.first_complete_statement(p)
     assert checkpoints[-1] == len(p.statements) - 1
     assert checkpoints == sorted(set(checkpoints))
+    assert set(checkpoints) <= set(replay.clean_endpoints(p).tolist())
 
 
 REQUEST_SAMPLE = os.environ.get("SPECTRA_REQUEST_SAMPLE")

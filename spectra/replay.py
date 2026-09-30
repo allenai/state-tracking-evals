@@ -295,15 +295,40 @@ def token_layout(program: Program, offsets: np.ndarray) -> TokenLayout:
     return TokenLayout(roles=roles, statement=statement.astype(np.int32), statement_end_token=end_token)
 
 
+def clean_endpoints(program: Program) -> np.ndarray:
+    """Assignment indices after which the program is between swaps.
+
+    A swap is written ``TMP <- x; x <- y; y <- TMP;`` (in the soluble build,
+    three increments starting with TMP), and eval programs end on a complete
+    one. Reading the state mid-swap asks about a configuration the answer
+    format never follows, so a statement is a clean endpoint only if the next
+    assignment starts fresh -- a constant write, or any write into TMP -- or it
+    is the last assignment.
+    """
+    assignments = program.assignment_indices
+    statements = program.statements
+    clean = []
+    for position, index in enumerate(assignments):
+        if position + 1 == len(assignments):
+            clean.append(index)
+            continue
+        following = statements[assignments[position + 1]]
+        if following.kind == "constant" or following.target == TEMPORARY_VARIABLE:
+            clean.append(index)
+    return np.array(clean, dtype=int)
+
+
 def log_spaced_checkpoints(program: Program, count: int, *, minimum: int | None = None) -> list[int]:
     """About ``count`` statement indices, log-spaced in assignment count.
 
-    Checkpoints land on non-filler statements at or after the first statement
-    that completes the register set, so every register has a defined value.
+    Checkpoints land on clean endpoints (see :func:`clean_endpoints`) at or
+    after the first statement that completes the register set, so every
+    register has a defined value and no swap is half-applied.
     """
     assignments = program.assignment_indices
     floor = first_complete_statement(program) if minimum is None else minimum
-    eligible = assignments[assignments >= floor]
+    clean = clean_endpoints(program)
+    eligible = clean[clean >= floor]
     if eligible.size == 0:
         return []
     # Position of each eligible statement in assignment order, 1-based.
