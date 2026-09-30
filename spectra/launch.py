@@ -25,7 +25,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 WORKSPACE = "ai2/beyond-state"
 BUDGET = "ai2/oe-other"
-CLUSTER = "ai2/saturn"
+# Any weka-mounted cluster; jobs take whichever has GPUs free first.
+CLUSTERS = ("ai2/saturn", "ai2/jupiter", "ai2/ceres")
 PRIORITY = "urgent"
 # The eval image (scripts/eval_dt.py EVAL_IMAGE): torch + CUDA in /opt/venv.
 IMAGE = "yashasbls/olmo-eval-vllm-g79d31a3f9-tch2100cu128-2026-05-23"
@@ -112,13 +113,12 @@ def suite(name: str) -> list[Job]:
 SUITES = ("pilot", "metadata", "metadata-solvable", "baseline", "precision", "interventions", "training-steps")
 
 
-def gantry_command(job: Job, *, cluster: str, priority: str) -> list[str]:
+def gantry_command(job: Job, *, clusters: list[str], priority: str) -> list[str]:
     command = [
         "gantry", "run",
         "--name", job.name,
         "--workspace", WORKSPACE,
         "--budget", BUDGET,
-        "--cluster", cluster,
         "--priority", priority,
         "--beaker-image", IMAGE,
         "--gpus", str(job.gpus),
@@ -140,6 +140,8 @@ def gantry_command(job: Job, *, cluster: str, priority: str) -> list[str]:
         "--no-logs",
         "--yes",
     ]
+    for cluster in clusters:
+        command += ["--cluster", cluster]
     for key, value in job.env.items():
         command += ["--env", f"{key}={value}"]
     return [*command, "--", PYTHON, "-m", job.module, *job.args]
@@ -148,7 +150,7 @@ def gantry_command(job: Job, *, cluster: str, priority: str) -> list[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--suite", nargs="+", required=True, choices=SUITES)
-    parser.add_argument("--cluster", default=CLUSTER)
+    parser.add_argument("--cluster", nargs="+", default=list(CLUSTERS))
     parser.add_argument("--priority", default=PRIORITY)
     parser.add_argument("--only", nargs="*", default=None, help="Launch only jobs whose name contains one of these")
     parser.add_argument("--dry-run", action="store_true")
@@ -158,7 +160,7 @@ def main() -> None:
     if args.only:
         jobs = [job for job in jobs if any(fragment in job.name for fragment in args.only)]
     for job in jobs:
-        command = gantry_command(job, cluster=args.cluster, priority=args.priority)
+        command = gantry_command(job, clusters=args.cluster, priority=args.priority)
         if args.dry_run:
             print(shlex.join(command))
         else:

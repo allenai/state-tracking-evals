@@ -52,7 +52,8 @@ def dataset_key(formatter: str, complexity: str) -> str:
 
 
 def load_predictions(groups: list[str], *, since: str | None = "2026-08-25", dtype: str = "bfloat16",
-                     in_distribution_padding: bool = True) -> pd.DataFrame:
+                     in_distribution_padding: bool = True, subsets: set[str] | None = None) -> pd.DataFrame:
+    """One row per (job, example); ``subsets`` limits the dataset subsets read."""
     results = rio.select_latest(rio.load_experiments(RESULTS_ROOT, groups=groups, since=since))
     rows = []
     for result in results:
@@ -64,6 +65,8 @@ def load_predictions(groups: list[str], *, since: str | None = "2026-08-25", dty
         for task in result.get("tasks", []):
             source = task.get("config", {}).get("data_source") or {}
             if source.get("source_type") != "hf" or not str(source.get("subset", "")).startswith("integer-code"):
+                continue
+            if subsets is not None and source["subset"] not in subsets:
                 continue
             path = rio.artifact_file(result, task, "predictions")
             if path is None:

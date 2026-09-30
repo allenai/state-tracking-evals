@@ -25,6 +25,14 @@ DT_GROUP = "jacksonp-state-bench-dt"
 FP32_GROUP = "jacksonp-state-bench-precision-fp32"
 
 
+EVAL_SUBSETS = {
+    "periodic": "integer-code--periodic",
+    "aperiodic": "integer-code--aperiodic",
+    "r-trivial": "integer-code--r-trivial",
+    "solvable": "integer-code-modular--solvable",
+}
+
+
 def _final_step(df: pd.DataFrame) -> pd.DataFrame:
     final = df.groupby(["architecture", "training_dataset"])["step"].transform("max")
     return df[df["step"] == final]
@@ -54,13 +62,14 @@ def accuracy_by_variables(eval_dataset: str) -> None:
     """Accuracy vs length for each variable count (m=2 swaps are parity; m=4 is still soluble)."""
     from spectra.evals import load_predictions
 
-    df = _final_step(_matched(load_predictions([DT_GROUP])))
+    df = _final_step(_matched(load_predictions([DT_GROUP], subsets={EVAL_SUBSETS[eval_dataset]})))
     df = df[(df["evaluation_dataset"] == eval_dataset) & df["architecture"].isin(GDN_SERIES)]
     counts = sorted(df["num_variables"].unique())
     binned = _binned_accuracy(df, ["architecture", "num_variables"])
     series = [s for s in style.SERIES_ORDER if s in set(binned["architecture"])]
     handles = [style.series_handle(s) for s in series] + style.reference_handles() + [style.chance_handle()]
-    fig, grid = style.row_figure(len(counts), handles)
+    fig, grid = style.row_figure(len(counts), handles,
+                                 title=f"{style.DATASET_LABEL[eval_dataset]}: accuracy by number of variables")
     axes = []
     for i, m in enumerate(counts):
         ax = fig.add_subplot(grid[0, i], sharey=axes[0] if axes else None)
@@ -78,8 +87,6 @@ def accuracy_by_variables(eval_dataset: str) -> None:
         style.configure_accuracy_axis(ax, first=i == 0)
         style.panel_title(ax, f"{m} variables")
         ax.set_xlabel("Input length (assignments, log scale)" if i == 0 else None)
-    fig.suptitle(f"{style.DATASET_LABEL[eval_dataset]}: accuracy by number of variables",
-                 x=0.75 / style.SUMMARY_FIG_WIDTH_IN, ha="left", fontsize=9, fontweight="bold")
     style.save(fig, f"accuracy_by_variables_{eval_dataset}")
     plt.close(fig)
 
@@ -88,8 +95,9 @@ def precision() -> None:
     """bf16 (the paper's evals) vs fp32 inference on the same sampled instances."""
     from spectra.evals import load_predictions
 
-    bf16 = load_predictions([DT_GROUP])
-    fp32 = load_predictions([FP32_GROUP], dtype="float32")
+    subsets = {EVAL_SUBSETS["periodic"], EVAL_SUBSETS["solvable"]}
+    bf16 = load_predictions([DT_GROUP], subsets=subsets)
+    fp32 = load_predictions([FP32_GROUP], dtype="float32", subsets=subsets)
     if fp32.empty:
         raise SystemExit("no fp32 results under results/; run scripts/fetch_results.py for the fp32 group")
     both = pd.concat([_final_step(_matched(bf16)), _final_step(_matched(fp32))])
@@ -233,7 +241,8 @@ def gate_summaries(dataset="periodic", k=4):
     series = [(m, _baseline(m, dataset)) for m in GDN_SERIES]
     series = [(m, r) for m, r in series if r is not None]
     handles = [style.series_handle(m) for m, _ in series] + style.reference_handles(extrapolation=False)
-    fig, grid = style.row_figure(len(panels), handles, wspace=0.35)
+    fig, grid = style.row_figure(len(panels), handles, wspace=0.35,
+                                 title=f"{style.DATASET_LABEL[dataset]}: top-{k} reflection heads per model")
     for i, (key, title, scale) in enumerate(panels):
         ax = fig.add_subplot(grid[0, i])
         plotted = []
@@ -256,8 +265,6 @@ def gate_summaries(dataset="periodic", k=4):
         if key == "reflection_mass":
             ax.yaxis.set_major_formatter(style.aes.PCT_FORMATTER)
         ax.set_xlabel("Token position (log scale)" if i == 0 else None)
-    fig.suptitle(f"{style.DATASET_LABEL[dataset]}: top-{k} reflection heads per model",
-                 x=0.75 / style.SUMMARY_FIG_WIDTH_IN, ha="left", fontsize=9, fontweight="bold")
     style.save(fig, f"gate_summaries_{dataset}")
     plt.close(fig)
 
@@ -395,7 +402,9 @@ def retention(dataset="periodic", k=4):
 
     series = [(m, _baseline(m, dataset)) for m in GDN_SERIES]
     series = [(m, r) for m, r in series if r is not None]
-    fig, grid = style.row_figure(len(series), style.reference_handles(extrapolation=False), height_in=1.9)
+    fig, grid = style.row_figure(
+        len(series), style.reference_handles(extrapolation=False), height_in=1.9,
+        title=f"{style.DATASET_LABEL[dataset]}: retention of the strongest write per block (top-{k} heads)")
     palette = None
     for i, (model, run) in enumerate(series):
         loaded = run.load_all("retention.npz")
@@ -429,8 +438,6 @@ def retention(dataset="periodic", k=4):
             ax.set_ylabel("‖Φ k‖ (write retained)")
         if i == len(series) - 1:
             ax.legend(title="write at token", fontsize=5.5, title_fontsize=6, frameon=False, loc="lower left")
-    fig.suptitle(f"{style.DATASET_LABEL[dataset]}: retention of the strongest write per block (top-{k} heads)",
-                 x=0.75 / style.SUMMARY_FIG_WIDTH_IN, ha="left", fontsize=9, fontweight="bold")
     style.save(fig, f"retention_{dataset}")
     plt.close(fig)
 
@@ -528,7 +535,8 @@ def hidden_drift(dataset="periodic"):
     series = [(m, _baseline(m, dataset)) for m in PM_SERIES]
     series = [(m, r) for m, r in series if r is not None]
     fig, grid = style.row_figure(len(series), style.reference_handles(extrapolation=False), height_in=1.9,
-                                 width_in=style.aes.ICLR_PAPER_WIDTH_IN)
+                                 width_in=style.aes.ICLR_PAPER_WIDTH_IN,
+                                 title=f"{style.DATASET_LABEL[dataset]}: residual-stream drift at each layer's input")
     for i, (model, run) in enumerate(series):
         loaded = run.load_all("drift.npz")
         n_pos = max(d["sum"].shape[2] for d in loaded)
@@ -560,8 +568,6 @@ def hidden_drift(dataset="periodic"):
         if i == 0:
             ax.set_ylabel("cos(mean input, ID mean)")
         ax.legend(fontsize=5, ncol=2, frameon=False, loc="lower left")
-    fig.suptitle(f"{style.DATASET_LABEL[dataset]}: residual-stream drift at each layer's input",
-                 x=0.75 / style.aes.ICLR_PAPER_WIDTH_IN, ha="left", fontsize=9, fontweight="bold")
     style.save(fig, f"hidden_drift_{dataset}")
     plt.close(fig)
 

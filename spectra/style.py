@@ -64,11 +64,23 @@ def legend_figure(width_in, height_in, legend_handles, *, left_in, right_in, top
     return fig, grid
 
 
+TITLE_BAND_IN = 0.1
+
+
 def row_figure(ncols, legend_handles, *, height_in=SUMMARY_FIG_HEIGHT_IN, width_in=SUMMARY_FIG_WIDTH_IN,
-               nrows=1, **grid_kwargs):
+               nrows=1, title=None, **grid_kwargs):
+    """Row of panels with a bottom legend; ``title`` gets its own band above the panel titles."""
     grid_kwargs.setdefault("wspace", 0.1)
-    return legend_figure(width_in, height_in * nrows, legend_handles, nrows=nrows, ncols=ncols,
-                         **MARGINS_IN, **grid_kwargs)
+    margins = dict(MARGINS_IN)
+    if title is not None:
+        margins["top_in"] += TITLE_BAND_IN
+        height_in = height_in + TITLE_BAND_IN / nrows
+    fig, grid = legend_figure(width_in, height_in * nrows, legend_handles, nrows=nrows, ncols=ncols,
+                              **margins, **grid_kwargs)
+    if title is not None:
+        fig.suptitle(title, x=margins["left_in"] / width_in, y=1 - 0.06 / fig.get_size_inches()[1],
+                     ha="left", va="top", fontsize=9, fontweight="bold")
+    return fig, grid
 
 
 def series_handle(series, **kwargs):
