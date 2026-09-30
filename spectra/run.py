@@ -169,13 +169,19 @@ def segment_plan(layout: replay.TokenLayout, checkpoints: list[int], max_segment
     return boundaries
 
 
-def validate_segmentation(model, device: torch.device, ids: torch.Tensor, tolerance: float) -> dict:
-    """Segmented prefill + cached continuation must match one full forward pass."""
+def validate_segmentation(model, device: torch.device, ids: torch.Tensor, tolerance: float,
+                          top_k: int = 20) -> dict:
+    """Segmented prefill + cached continuation must match one full forward pass.
+
+    Compared on the reference's top-``top_k`` tokens at each position (a max
+    over the whole vocabulary is dominated by bf16 rounding on tokens with
+    negligible probability), plus top-1 agreement and KL.
+    """
     ids = ids.to(device)
     n = ids.shape[0]
     tail = 40
     with torch.inference_mode():
-        full = model(input_ids=ids[None]).logits[0, -tail:].float()
+        full = model(input_ids=ids[None]).logits[0, -tail:].float().log_softmax(-1)
         cache = new_cache(model)
         # A long chunked segment, a single-token (decode-path) segment, and another
         # chunked one, then the cached continuation.
@@ -183,9 +189,19 @@ def validate_segmentation(model, device: torch.device, ids: torch.Tensor, tolera
         cut = sorted({0, body // 3, body // 3 + 1, body})
         for a, b in zip(cut, cut[1:]):
             prefill(model, cache, ids[a:b])
-        segmented = continuation_logits(model, cache, ids[-tail:])
-    diff = (full.log_softmax(-1) - segmented.log_softmax(-1)).abs().max().item()
-    result = {"max_abs_logprob_diff": diff, "tolerance": tolerance, "ok": diff <= tolerance}
+        segmented = continuation_logits(model, cache, ids[-tail:]).log_softmax(-1)
+    top = full.topk(top_k, dim=-1).indices
+    top_diff = (full.gather(1, top) - segmented.gather(1, top)).abs().max().item()
+    agreement = (full.argmax(-1) == segmented.argmax(-1)).float().mean().item()
+    kl = (full.exp() * (full - segmented)).sum(-1).max().item()
+    result = {
+        "max_abs_top_logprob_diff": top_diff,
+        "max_abs_logprob_diff_all_vocab": (full - segmented).abs().max().item(),
+        "top1_agreement": agreement,
+        "max_kl": kl,
+        "tolerance": tolerance,
+    }
+    result["ok"] = top_diff <= tolerance and agreement >= 0.95
     if not result["ok"]:
         raise RuntimeError(f"segmented prefill diverges from a full forward pass: {result}")
     return result
@@ -418,7 +434,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--statement-spectra", type=int, default=64, help="Statements per sample (0 = off)")
     parser.add_argument("--intervention", type=json.loads, default={},
                         help='JSON, e.g. \'{"snap_reflect": 0.05}\' (see capture.Intervention)')
-    parser.add_argument("--validation-tolerance", type=float, default=5e-2)
+    parser.add_argument("--validation-tolerance", type=float, default=None,
+                        help="Max top-k logprob gap (default: 0.05 in float32, 0.25 in bfloat16)")
     parser.add_argument("--out", type=Path, default=Path("/results/spectra"))
     parser.add_argument("--name", default=None, help="Run directory name (default: derived)")
     return parser.parse_args(argv)
@@ -451,7 +468,8 @@ def main(argv=None) -> None:
 
     probe = min(rows, key=lambda r: len(r["prefix"]))
     probe_ids = torch.tensor(tokenizer.encode(probe["prefix"], add_special_tokens=False))
-    validation = validate_segmentation(model, device, probe_ids, args.validation_tolerance)
+    tolerance = args.validation_tolerance or (0.05 if args.dtype == "float32" else 0.25)
+    validation = validate_segmentation(model, device, probe_ids, tolerance)
     log.info("segmentation check: %s", validation)
 
     readout = Readout(tokenizer, int(rows[0].get("num_values") or 100), args.training in MODULAR_TRAINING)

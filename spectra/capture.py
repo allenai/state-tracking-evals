@@ -473,15 +473,16 @@ class StatementSpectra:
             span = slice(lo - start, hi - start)
             k_unit = _unit(segment.k[span], torch.float64)
             g, beta = segment.g[span].double(), segment.beta[span].double()
-            product = transition_product(k_unit, g, beta)  # (H, D, D)
-            eigenvalues = torch.linalg.eigvals(product)  # (H, D)
-            trivial = g.sum(dim=0).exp()  # (H,)
-            distance = (eigenvalues - trivial[:, None]).abs()
-            order = distance.argsort(dim=-1, descending=True)[:, : self.keep]
-            chosen = torch.gather(eigenvalues, 1, order)
+            product = transition_product(k_unit, g, beta).cpu().numpy()  # (H, D, D)
+            # Eigendecompose on the CPU: the matrices are tiny, and complex CUDA
+            # arithmetic JIT-compiles kernels that fail on some GPU generations.
+            eigenvalues = np.linalg.eigvals(product)  # (H, D) complex
+            trivial = np.exp(g.sum(dim=0).cpu().numpy())  # (H,)
+            distance = np.abs(eigenvalues - trivial[:, None])
+            order = np.argsort(-distance, axis=-1)[:, : self.keep]
             self.results[(segment.layer, statement)] = {
-                "eigenvalues": chosen.cpu().numpy(),
-                "trivial": trivial.cpu().numpy(),
+                "eigenvalues": np.take_along_axis(eigenvalues, order, axis=1),
+                "trivial": trivial,
             }
 
     def result(self) -> dict[str, np.ndarray]:
