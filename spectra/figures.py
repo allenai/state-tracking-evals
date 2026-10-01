@@ -590,6 +590,60 @@ def training_steps(dataset="periodic"):
     plt.close(fig)
 
 
+def retention_vs_extrapolation(dataset="periodic", lag=4096):
+    """Memory-head retention vs readout accuracy past the training length, one point per run.
+
+    Points cover every model, training checkpoint and gate intervention. A shared
+    trend across models and checkpoints is the correlation; the snapped runs,
+    whose reflections were made exact, test whether it is causal.
+    """
+    from spectra import outputs
+
+    handles = [style.series_handle(m, linestyle="none") for m in GDN_SERIES] + [
+        plt.Line2D([0], [0], marker="o", color="0.4", linestyle="none", ms=4, label="final checkpoint"),
+        plt.Line2D([0], [0], marker="o", color="0.4", markerfacecolor="none", linestyle="none", ms=4,
+                   label="earlier checkpoint"),
+        plt.Line2D([0], [0], marker="X", color="0.4", linestyle="none", ms=5, label="\u03b2 snapped to 2"),
+    ]
+    fig, grid = style.row_figure(1, handles, width_in=style.aes.ICLR_PAPER_WIDTH_IN, height_in=2.3,
+                                 title=f"{style.DATASET_LABEL[dataset]}: memory retention vs. extrapolation")
+    ax = fig.add_subplot(grid[0, 0])
+    for model in GDN_SERIES:
+        final = outputs.find(model, dataset)
+        if final is None:
+            continue
+        li, layer, head, _ = persistent_heads(final)[0]
+        for run in outputs.runs():
+            if run.model_type != model or run.training != dataset or run.dtype != "bfloat16" or "pilot" in run.name:
+                continue
+            snapped = "snap_reflect" in run.intervention
+            if run.intervention and not snapped:
+                continue
+            ret = _retention(run)
+            if ret is None:
+                continue
+            j = int(np.searchsorted(ret["lag_tokens"], lag))
+            counts = ret["counts"][li, 0, :, j]
+            retained = float(np.exp((ret["mean"][li, 0, head, :, j] * counts).sum() / max(counts.sum(), 1)))
+            df = run.readout
+            past = df[(df["assignments_so_far"] > 1024) & (df["assignments_so_far"] <= 4096)]
+            accuracy = past["correct_present_values"].mean()
+            is_final = run.step == final.step
+            color = style.SERIES_COLORS[model]
+            ax.plot(retained, accuracy, linestyle="none", ms=6 if snapped else 4.5,
+                    marker="X" if snapped else style.SERIES_MARKERS[model], color=color,
+                    markerfacecolor=color if (is_final or snapped) else "none", alpha=0.55 if snapped else 1.0,
+                    zorder=2 if snapped else 3)
+    ax.set_xscale("log")
+    ax.set_ylim(0, 1.02)
+    ax.yaxis.set_major_formatter(style.aes.PCT_FORMATTER)
+    ax.grid(alpha=0.2)
+    ax.set_xlabel(f"Memory-head write retained at {style.aes.format_compact_number(lag)} tokens")
+    ax.set_ylabel("Accuracy, 1K\u20134K assign.")
+    style.save(fig, f"retention_vs_extrapolation_{dataset}")
+    plt.close(fig)
+
+
 def hidden_drift(dataset="periodic"):
     """Cosine similarity of each layer's mean input (per role) to its in-distribution mean."""
     import seaborn as sns
@@ -646,6 +700,7 @@ FIGURES = {
     "interventions": interventions,
     "drift": lambda: [hidden_drift(d) for d in ("periodic", "solvable")],
     "training-steps": training_steps,
+    "retention-vs-extrapolation": retention_vs_extrapolation,
 }
 
 
