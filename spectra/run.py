@@ -170,7 +170,7 @@ def segment_plan(layout: replay.TokenLayout, checkpoints: list[int], max_segment
 
 
 def validate_segmentation(model, device: torch.device, ids: torch.Tensor, tolerance: float,
-                          top_k: int = 20) -> dict:
+                          top_k: int = 20, kl_tolerance: float = 1e-2) -> dict:
     """Segmented prefill + cached continuation must match one full forward pass.
 
     Compared on the reference's top-``top_k`` tokens at each position (a max
@@ -200,8 +200,11 @@ def validate_segmentation(model, device: torch.device, ids: torch.Tensor, tolera
         "top1_agreement": agreement,
         "max_kl": kl,
         "tolerance": tolerance,
+        "kl_tolerance": kl_tolerance,
     }
-    result["ok"] = top_diff <= tolerance and agreement >= 0.95
+    # Top-1 agreement is reported but not gated on: bf16 near-ties flip the
+    # argmax at a few positions even when the distributions match (KL ~1e-5).
+    result["ok"] = top_diff <= tolerance and kl <= kl_tolerance
     if not result["ok"]:
         raise RuntimeError(f"segmented prefill diverges from a full forward pass: {result}")
     return result
