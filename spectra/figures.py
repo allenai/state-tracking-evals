@@ -484,35 +484,49 @@ def statement_eigenvalues(dataset="solvable", k=2):
     plt.close(fig)
 
 
-INTERVENTIONS = [
-    ({}, "none", "-"),
-    ({"snap_reflect": 0.02}, "snap β→2", "--"),
-    ({"snap_alpha": 0.001}, "snap α→1", "-."),
-    ({"snap_reflect": 0.02, "snap_alpha": 0.001}, "snap both", (0, (1, 1))),
-    ({"alpha_power": 0.5}, "α → α^0.5", (0, (3, 1, 1, 1, 1, 1))),
-    ({"attn_window": 4096}, "attention window 4K", (0, (5, 2))),
-]
+MEMORY_HEADS = {"gdn-full": [[1, 6]], "hybrid": [[5, 1]]}  # spectra/launch.py interventions-targeted
+
+
+def intervention_variants(model):
+    """(label, find kwargs) for every intervention shown for ``model``."""
+    variants = [
+        ("none", {}),
+        ("float32", {"dtype": "float32"}),
+        ("snap \u03b2\u21922 (\u03b2 > 1.98)", {"intervention": {"snap_reflect": 0.02}}),
+        ("snap \u03b2\u21922 (\u03b2 > 1.75)", {"intervention": {"snap_reflect": 0.25}}),
+        ("snap \u03b2\u21922 (\u03b2 > 1.75), memory head", {"intervention": {"snap_reflect": 0.25,
+                                                                   "heads": MEMORY_HEADS.get(model)}}),
+        ("snap \u03b1\u21921 (\u03b1 > 0.999)", {"intervention": {"snap_alpha": 0.001}}),
+        ("snap both", {"intervention": {"snap_reflect": 0.02, "snap_alpha": 0.001}}),
+        ("\u03b1 \u2192 \u03b1^0.5", {"intervention": {"alpha_power": 0.5}}),
+    ]
+    if model == "hybrid":
+        variants.append(("attention window 4K", {"intervention": {"attn_window": 4096}}))
+    return variants
 
 
 def interventions():
     """Readout accuracy vs position under gate interventions and fp32 inference."""
+    import seaborn as sns
+
     from spectra import outputs
 
     cells = [(m, d) for d in ("solvable", "periodic") for m in PM_SERIES]
-    variants = INTERVENTIONS + [(None, "float32", (0, (1, 2)))]
-    handles = [plt.Line2D([0], [0], color="0.3", linestyle=ls, linewidth=1.2, label=label)
-               for _, label, ls in variants] + style.reference_handles()
+    labels = [label for label, _ in intervention_variants("hybrid")]
+    colors = dict(zip(labels[1:], sns.color_palette("colorblind", n_colors=len(labels) - 1)))
+    colors["none"] = (0.1, 0.1, 0.1)
+    handles = [plt.Line2D([0], [0], color=colors[label], lw=2.0 if label == "none" else 1.1, label=label)
+               for label in labels] + style.reference_handles()
     fig, grid = style.row_figure(len(cells), handles)
     for i, (model, dataset) in enumerate(cells):
         ax = fig.add_subplot(grid[0, i])
-        for iv, label, linestyle in variants:
-            run = (outputs.find(model, dataset, dtype="float32") if iv is None
-                   else outputs.find(model, dataset, intervention=iv))
+        for label, kwargs in intervention_variants(model):
+            run = outputs.find(model, dataset, **kwargs)
             if run is None:
                 continue
             curve = _readout_curve(run.readout)
-            ax.plot(curve["bin_mid"], curve["accuracy"], color=style.SERIES_COLORS[model], linestyle=linestyle,
-                    lw=1.2, marker=style.SERIES_MARKERS[model] if not iv else None, ms=2.5)
+            ax.plot(curve["bin_mid"], curve["accuracy"], color=colors[label], lw=2.0 if label == "none" else 1.1,
+                    marker="o" if label == "none" else None, ms=2.5, zorder=3 if label == "none" else 2)
         style.configure_log_axis(ax, 4, 1e5)
         style.add_reference_lines(ax)
         style.configure_accuracy_axis(ax, first=i == 0)
