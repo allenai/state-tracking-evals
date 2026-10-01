@@ -30,9 +30,8 @@ def experiments(prefix: str) -> list[dict]:
 
 
 def result_dataset(experiment: dict) -> str | None:
-    detail = subprocess.run(["beaker", "experiment", "get", experiment["id"], "--format", "json"],
-                            check=True, capture_output=True, text=True)
-    for job in json.loads(detail.stdout)[0].get("jobs", []):
+    """The result dataset of the experiment's successful job (the listing carries both)."""
+    for job in experiment.get("jobs", []):
         status = job.get("status", {})
         if status.get("exitCode") == 0 and "finalized" in status:
             return job.get("result", {}).get("beaker")
@@ -55,7 +54,6 @@ def main() -> None:
             continue
         dataset = result_dataset(experiment)
         if dataset is None:
-            print(f"  [skip] {name}: not finished")
             continue
         staging = RESULTS / ".staging" / experiment["id"]
         if staging.exists():
