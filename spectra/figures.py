@@ -172,6 +172,9 @@ def _position_axis_edges(edges):
 SPECTRUM_MODELS = ("hybrid", "gdn-full", "hybrid-sdp", "gdn-sdp")
 MU_BINS = 50  # coarsened from the 200 recorded bins
 OVERWRITE_MU = 0.2  # |mu| below this counts as an overwrite (beta ~ 1)
+# Frame color for the memory head in density grids: a cool cyan that reads against
+# the warm rocket_r colormap and isn't used for anything else.
+MEMORY_HEAD_COLOR = "#00A8E8"
 
 
 def _mu_hist(run):
@@ -350,7 +353,8 @@ def gate_spectrum_all_heads(model, dataset="periodic"):
     Each panel is the column-normalized mu density by token position (content
     tokens). Corner labels give the head's in-distribution reflection mass
     (mu < -0.5, top left) and how much of its strongest write per block is left
-    after 4K tokens (top right).
+    after 4K tokens (top right). The memory head -- the head with the highest
+    write retention at a 1K-token lag (``persistent_heads``) -- is framed.
     """
     run = _baseline(model, dataset)
     if run is None:
@@ -366,6 +370,7 @@ def gate_spectrum_all_heads(model, dataset="periodic"):
     neg = run.moment("neg")[:, :, mask][..., early].sum((2, 3)) / np.maximum(
         run.moment("count")[:, :, mask][..., early].sum((2, 3)), 1)
     ret = _retention(run)
+    _, memory_layer, memory_head, _ = persistent_heads(run)[0]
     j = int(np.searchsorted(ret["lag_tokens"], 4096))
     counts = ret["counts"][:, 0, :, j]  # (L, start)
     left = np.exp((ret["mean"][:, 0, :, :, j] * counts[:, None]).sum(-1) / np.maximum(counts.sum(-1), 1)[:, None])
@@ -392,6 +397,11 @@ def gate_spectrum_all_heads(model, dataset="periodic"):
                         fontsize=4.5, color="0.1", bbox=label_box)
                 ax.text(0.97, 0.95, f"{left[li, head]:.2f}", transform=ax.transAxes, ha="right", va="top",
                         fontsize=4.5, color="0.1", bbox=label_box)
+                if (layer, head) == (memory_layer, memory_head):
+                    for spine in ax.spines.values():
+                        spine.set_visible(True)
+                        spine.set_edgecolor(MEMORY_HEAD_COLOR)
+                        spine.set_linewidth(1.8)
                 ax.tick_params(labelbottom=last_row, labelleft=first_col, labelsize=4.5, length=1.5)
                 if not last_row:
                     ax.set_xticklabels([])
@@ -413,7 +423,7 @@ def gate_spectrum_all_heads(model, dataset="periodic"):
                        fontsize=6)
         cbar.ax.tick_params(labelsize=5)
     fig.text(0.07, 0.15 / height, "corner labels: left = reflection mass (\u03bc<\u22120.5, \u2264 2K tokens); "
-             "right = write retained at 4K tokens.", fontsize=5.5, color="0.3")
+             "right = write retained at 4K tokens. Framed: memory head (highest write retention at a 1K-token lag).", fontsize=5.5, color="0.3")
     style.save(fig, f"gate_spectrum_all_heads_{model}_{dataset}")
     plt.close(fig)
 
