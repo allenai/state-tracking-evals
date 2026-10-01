@@ -2,7 +2,7 @@
 
 Runs: one per model (GDN±, Hybrid±, GDN+, Hybrid+) × matched train/eval data, bf16 (as in the paper), final checkpoint. Each covers 8 prompts under 2K tokens and 8 at ~256K tokens, stratified by variable count. Figures are in `figures/spectra/`.
 
-**TL;DR.** The per-token eigenvalues don't decay at long positions. In every ± model the spectrum (including the bimodal mass near μ ≈ −1) is stationary from ~1K to 256K tokens, and residual-stream inputs barely drift. What does predict where each model fails is how long its most persistent head retains a write. That retention is a function of *lag*, identical wherever the write happens. Writes leak through the product of later transitions (inexact reflections and overwrites), not through the forget gate.
+**TL;DR.** The per-token eigenvalues don't decay at long positions. In every ± model the spectrum (including the bimodal mass near μ ≈ −1) is stationary from ~1K to 256K tokens, and residual-stream inputs barely drift. What does predict where each model fails is how long its most persistent head retains a write. That retention is a function of *lag*, identical wherever the write happens. Writes leak through the product of later transitions, not through the forget gate. **Update (note 04):** making the memory head's reflections exact doesn't change accuracy, so the retention-to-failure link is correlational. Inexact reflections are not the cause.
 
 **1. No eigenvalue drift** (`gate_spectrum_heatmaps_periodic.pdf`, `gate_summaries_periodic.pdf`).
 - In the top ± heads, 40–64% of content tokens have μ < −0.5. The models do use negative eigenvalues; this isn't a pure copy-chain strategy.

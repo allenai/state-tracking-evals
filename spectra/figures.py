@@ -536,6 +536,60 @@ def interventions():
     plt.close(fig)
 
 
+def training_steps(dataset="periodic"):
+    """Readout accuracy and memory-head retention across training checkpoints.
+
+    The head is the final checkpoint's most persistent head, held fixed so the
+    rows show how that head's memory develops. Pairs of checkpoints straddle
+    each learning-rate decay of the WSDS schedule.
+    """
+    import seaborn as sns
+
+    from spectra import outputs
+
+    models = [m for m in PM_SERIES if outputs.find(m, dataset) is not None]
+    handles = style.reference_handles()
+    fig, grid = style.row_figure(len(models), handles, nrows=2, height_in=1.7, hspace=0.6,
+                                 width_in=style.aes.ICLR_PAPER_WIDTH_IN,
+                                 title=f"{style.DATASET_LABEL[dataset]}: across training checkpoints")
+    for i, model in enumerate(models):
+        final = outputs.find(model, dataset)
+        li, layer, head, _ = persistent_heads(final)[0]
+        steps = sorted({r.step for r in outputs.runs() if r.model_type == model and r.training == dataset
+                        and r.dtype == "bfloat16" and not r.intervention and "pilot" not in r.name})
+        palette = dict(zip(steps, sns.color_palette("crest", n_colors=len(steps))))
+        top = fig.add_subplot(grid[0, i])
+        bottom = fig.add_subplot(grid[1, i])
+        for step in steps:
+            run = outputs.find(model, dataset, step=step)
+            curve = _readout_curve(run.readout)
+            top.plot(curve["bin_mid"], curve["accuracy"], color=palette[step], lw=1.2, marker="o", ms=2,
+                     label=f"step {step}")
+            ret = _retention(run)
+            if ret is None:
+                continue
+            counts = ret["counts"][li, 0]
+            pooled = (ret["mean"][li, 0, head] * counts).sum(0) / np.maximum(counts.sum(0), 1)
+            ok = counts.sum(0) > 0
+            bottom.plot(ret["lag_tokens"][ok], np.exp(pooled[ok]), color=palette[step], lw=1.2, marker="o", ms=2)
+        style.configure_log_axis(top, 4, 1e5)
+        style.add_reference_lines(top)
+        style.configure_accuracy_axis(top, first=i == 0)
+        style.panel_title(top, style.SERIES_LABELS[model])
+        top.legend(fontsize=5.5, frameon=False, loc="lower left")
+        top.set_xlabel("Assignments read so far" if i == 0 else None, fontsize=7)
+        bottom.set_xscale("log")
+        bottom.set_yscale("log")
+        bottom.set_ylim(1e-3, 1.5)
+        bottom.xaxis.set_major_formatter(style.aes.COMPACT_NUMBER_FORMATTER)
+        bottom.axvline(style.TOKEN_REFERENCE, color=style.ASSIGNMENT_REFERENCE_COLOR, linestyle=":", linewidth=1.4)
+        bottom.grid(alpha=0.2)
+        style.panel_title(bottom, f"memory head L{layer} H{head}: write retained")
+        bottom.set_xlabel("Lag (tokens)" if i == 0 else None, fontsize=7)
+    style.save(fig, f"training_steps_{dataset}")
+    plt.close(fig)
+
+
 def hidden_drift(dataset="periodic"):
     """Cosine similarity of each layer's mean input (per role) to its in-distribution mean."""
     import seaborn as sns
@@ -591,6 +645,7 @@ FIGURES = {
     "statement-eigenvalues": lambda: [statement_eigenvalues(d) for d in ("solvable", "periodic")],
     "interventions": interventions,
     "drift": lambda: [hidden_drift(d) for d in ("periodic", "solvable")],
+    "training-steps": training_steps,
 }
 
 
