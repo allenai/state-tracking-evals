@@ -344,6 +344,86 @@ def gate_spectrum_by_head(dataset="periodic"):
     _finish_density_grid(fig, grid, image, axes_rows, [m for m, _ in runs], f"gate_spectrum_by_head_{dataset}")
 
 
+def gate_spectrum_all_heads(model, dataset="periodic"):
+    """Every head of one model: rows are layers, columns are heads.
+
+    Each panel is the column-normalized mu density by token position (content
+    tokens). Corner labels give the head's in-distribution reflection mass
+    (mu < -0.5, top left) and how much of its strongest write per block is left
+    after 4K tokens (top right). The memory head is framed.
+    """
+    run = _baseline(model, dataset)
+    if run is None:
+        return
+    hist = _mu_hist(run)
+    gdn_layers = list(run.gates["layers"])
+    layer_types = run.meta["layer_types"]
+    n_layers, n_heads = len(layer_types), hist.shape[1]
+
+    edges = run.gates["position_edges"]
+    early = edges[1:] <= ID_TOKENS
+    mask = run.role_mask(CONTENT_ROLES)
+    neg = run.moment("neg")[:, :, mask][..., early].sum((2, 3)) / np.maximum(
+        run.moment("count")[:, :, mask][..., early].sum((2, 3)), 1)
+    ret = _retention(run)
+    j = int(np.searchsorted(ret["lag_tokens"], 4096))
+    counts = ret["counts"][:, 0, :, j]  # (L, start)
+    left = np.exp((ret["mean"][:, 0, :, :, j] * counts[:, None]).sum(-1) / np.maximum(counts.sum(-1), 1)[:, None])
+    _, memory_layer, memory_head, _ = persistent_heads(run)[0]
+
+    panel_in = 0.82
+    width = style.SUMMARY_FIG_WIDTH_IN
+    height = panel_in * n_layers * 0.62 + 1.0
+    fig = plt.figure(figsize=(width, height))
+    grid = fig.add_gridspec(n_layers, n_heads + 1, width_ratios=[1] * n_heads + [0.06], left=0.07, right=0.92,
+                            top=1 - 0.55 / height, bottom=0.45 / height, hspace=0.12, wspace=0.08)
+    fig.suptitle(f"{style.SERIES_LABELS[model]}, {style.DATASET_LABEL[dataset]}: per-token \u03bc = \u03b1(1\u2212\u03b2) "
+                 "by position, every head", x=0.07, ha="left", fontsize=9, fontweight="bold")
+    image = None
+    label_box = {"boxstyle": "round,pad=0.12", "facecolor": "white", "edgecolor": "none", "alpha": 0.75}
+    for layer in range(n_layers):
+        for head in range(n_heads):
+            ax = fig.add_subplot(grid[layer, head])
+            # Position labels go on the last GDN row (a hybrid ends on an attention layer).
+            last_row, first_col = layer == max(gdn_layers), head == 0
+            if layer in gdn_layers:
+                li = gdn_layers.index(layer)
+                image = _draw_density(ax, hist[li, head], run.gates["hist_position_edges"])
+                ax.text(0.03, 0.95, f"{neg[li, head]:.0%}", transform=ax.transAxes, ha="left", va="top",
+                        fontsize=4.5, color="0.1", bbox=label_box)
+                ax.text(0.97, 0.95, f"{left[li, head]:.2f}", transform=ax.transAxes, ha="right", va="top",
+                        fontsize=4.5, color="0.1", bbox=label_box)
+                if (layer, head) == (memory_layer, memory_head):
+                    for spine in ax.spines.values():
+                        spine.set_visible(True)
+                        spine.set_edgecolor(style.SERIES_COLORS[model])
+                        spine.set_linewidth(1.6)
+                ax.tick_params(labelbottom=last_row, labelleft=first_col, labelsize=4.5, length=1.5)
+                if not last_row:
+                    ax.set_xticklabels([])
+            else:
+                ax.set_xticks([])
+                ax.set_yticks([])
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+                if head == n_heads // 2:
+                    ax.text(0.0, 0.5, "attention layer", transform=ax.transAxes, ha="center", va="center",
+                            fontsize=6, color="0.5")
+            if layer == 0:
+                ax.set_title(f"H{head}", fontsize=6.5, fontweight="regular")
+            if first_col:
+                ax.set_ylabel(f"L{layer}", fontsize=6.5, rotation=0, ha="right", va="center")
+    if image is not None:
+        cbar = fig.colorbar(image, cax=fig.add_subplot(grid[:, -1]))
+        cbar.set_label("fraction of tokens at each position (x: token position, log; y: \u03bc \u2208 [\u22121, 1])",
+                       fontsize=6)
+        cbar.ax.tick_params(labelsize=5)
+    fig.text(0.07, 0.15 / height, "corner labels: left = reflection mass (\u03bc<\u22120.5, \u2264 2K tokens); "
+             "right = write retained at 4K tokens. Framed: memory head.", fontsize=5.5, color="0.3")
+    style.save(fig, f"gate_spectrum_all_heads_{model}_{dataset}")
+    plt.close(fig)
+
+
 def _head_curves(run, heads, roles):
     """Per-position gate summaries pooled over ``heads`` and ``roles``."""
     mask = run.role_mask(roles)
@@ -823,6 +903,8 @@ FIGURES = {
     "gate-heatmaps": lambda: [gate_spectrum_heatmaps(d) for d in ("periodic", "solvable")],
     "gate-by-layer": lambda: [gate_spectrum_by_layer(d) for d in ("periodic", "solvable")],
     "gate-by-head": lambda: [gate_spectrum_by_head(d) for d in ("periodic", "solvable")],
+    "gate-all-heads": lambda: [gate_spectrum_all_heads(m, d) for d in ("periodic", "solvable")
+                               for m in SPECTRUM_MODELS],
     "gate-summaries": lambda: [gate_summaries(d) for d in ("periodic", "solvable")],
     "readout": readout_by_position,
     "dissociation": lambda: [dissociation(d) for d in ("periodic", "solvable")],
