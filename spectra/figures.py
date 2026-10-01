@@ -169,50 +169,179 @@ def _position_axis_edges(edges):
     return edges
 
 
-def gate_spectrum_heatmaps(dataset="periodic", k=4):
-    """Density of mu = alpha * (1 - beta) by token position for each run's top reflection heads."""
+SPECTRUM_MODELS = ("hybrid", "gdn-full", "hybrid-sdp", "gdn-sdp")
+MU_BINS = 50  # coarsened from the 200 recorded bins
+OVERWRITE_MU = 0.2  # |mu| below this counts as an overwrite (beta ~ 1)
+
+
+def _mu_hist(run):
+    """Content-token mu histogram per (layer, head, position bin, mu bin)."""
+    hist = run.gates["hist_mu"][:, :, run.role_mask(CONTENT_ROLES)].sum(axis=2)  # (L, H, Bh, 200)
+    return hist.reshape(*hist.shape[:3], MU_BINS, -1).sum(-1)
+
+
+def overwrite_heads(run, k=3, exclude=()):
+    """Heads ranked by in-distribution mass at |mu| < OVERWRITE_MU (delta-rule overwrites)."""
+    hist = _mu_hist(run)
+    early = run.gates["hist_position_edges"][1:] <= ID_TOKENS
+    centers = np.linspace(-1, 1, MU_BINS + 1)
+    centers = (centers[:-1] + centers[1:]) / 2
+    near_zero = np.abs(centers) < OVERWRITE_MU
+    total = hist[:, :, early].sum(axis=(2, 3))
+    score = hist[:, :, early][..., near_zero].sum(axis=(2, 3)) / np.maximum(total, 1)
+    layers = run.gates["layers"]
+    ranked = [(int(li), int(layers[li]), int(h), float(score[li, h]))
+              for li, h in np.dstack(np.unravel_index(np.argsort(-score, axis=None), score.shape))[0]]
+    return [r for r in ranked if (r[1], r[2]) not in set(exclude)][:k]
+
+
+def selected_heads(run, k=3):
+    """(layer index, layer, head, title) for a model's memory head plus k heads chosen by role.
+
+    The memory head is the most persistent one (write retention at a 1K-token lag).
+    The others are the top reflectors (mass at mu < -0.5) when the model has
+    negative eigenvalues, otherwise the top overwriters (mass at |mu| < 0.2).
+    Both rankings use in-distribution positions only.
+    """
+    li, layer, head, _ = persistent_heads(run)[0]
+    ret = _retention(run)
+    j = int(np.searchsorted(ret["lag_tokens"], 4096))
+    counts = ret["counts"][li, 0, :, j]
+    left = float(np.exp((ret["mean"][li, 0, head, :, j] * counts).sum() / max(counts.sum(), 1)))
+    chosen = [(li, layer, head, f"memory  L{layer} H{head}  ({left:.0%} left at 4K)")]
+    if run.meta.get("allow_neg_eigval", True):
+        others = [r for r in reflection_heads(run, k + 1) if (r[1], r[2]) != (layer, head)][:k]
+        chosen += [(oli, ol, oh, f"reflects  L{ol} H{oh}  ({score:.0%} \u03bc<\u22120.5)")
+                   for oli, ol, oh, score in others]
+    else:
+        others = overwrite_heads(run, k, exclude=[(layer, head)])
+        chosen += [(oli, ol, oh, f"overwrites  L{ol} H{oh}  ({score:.0%} |\u03bc|<{OVERWRITE_MU})")
+                   for oli, ol, oh, score in others]
+    return chosen
+
+
+def _density_grid(nrows, ncols, title, *, panel_height_in=1.15):
+    width = style.SUMMARY_FIG_WIDTH_IN
+    fig = plt.figure(figsize=(width, panel_height_in * nrows + 0.75))
+    grid = fig.add_gridspec(nrows, ncols + 1, width_ratios=[1] * ncols + [0.05], left=0.08, right=0.92,
+                            top=1 - 0.5 / (panel_height_in * nrows + 0.75), bottom=0.38 / (panel_height_in * nrows + 0.75),
+                            hspace=0.6, wspace=0.15)
+    fig.suptitle(title, x=0.08, ha="left", fontsize=9, fontweight="bold")
+    return fig, grid
+
+
+def _draw_density(ax, counts, position_edges):
+    """Column-normalized mu density (rows: position bins, cols: mu bins) on a log position axis."""
     import seaborn as sns
     from matplotlib.colors import LogNorm
 
-    runs = [(m, _baseline(m, dataset)) for m in ("hybrid", "gdn-full", "hybrid-sdp", "gdn-sdp")]
-    runs = [(m, r) for m, r in runs if r is not None]
-    if not runs:
-        raise SystemExit(f"no baseline runs for {dataset}")
-    width = style.SUMMARY_FIG_WIDTH_IN
-    fig = plt.figure(figsize=(width, 1.25 * len(runs) + 0.6))
-    grid = fig.add_gridspec(len(runs), k + 1, width_ratios=[1] * k + [0.05], left=0.08, right=0.93, top=0.9,
-                            bottom=0.12, hspace=0.55, wspace=0.12)
-    cmap = sns.color_palette("rocket_r", as_cmap=True)
-    norm = LogNorm(1e-4, 1)
-    image = None
-    for row, (model, run) in enumerate(runs):
-        mask = run.role_mask(CONTENT_ROLES)
-        hist = run.gates["hist_mu"][:, :, mask].sum(axis=2)  # (L, H, Bh, 200)
-        hist = hist.reshape(*hist.shape[:3], 50, 4).sum(-1)  # 50 mu bins
-        x = _position_axis_edges(run.gates["hist_position_edges"])
-        y = np.linspace(-1, 1, 51)
-        for col, (li, layer, head, score) in enumerate(reflection_heads(run, k)):
-            ax = fig.add_subplot(grid[row, col])
-            density = hist[li, head] / np.maximum(hist[li, head].sum(axis=1, keepdims=True), 1)
-            density = np.where(hist[li, head].sum(axis=1, keepdims=True) > 0, density, np.nan)
-            image = ax.pcolormesh(x, y, np.clip(density.T, 1e-4, 1), cmap=cmap, norm=norm, shading="flat",
-                                  rasterized=True)
-            ax.set_xscale("log")
-            ax.xaxis.set_major_formatter(style.aes.COMPACT_NUMBER_FORMATTER)
-            ax.axvline(style.TOKEN_REFERENCE, color=style.ASSIGNMENT_REFERENCE_COLOR, linestyle=":", linewidth=1.2)
-            ax.set_yticks([-1, 0, 1])
-            ax.tick_params(labelleft=col == 0, labelsize=6)
-            ax.set_title(f"L{layer} H{head}  ({score:.0%} μ<−0.5)", fontsize=6.5, fontweight="regular")
+    totals = counts.sum(axis=1, keepdims=True)
+    density = np.where(totals > 0, counts / np.maximum(totals, 1), np.nan)
+    image = ax.pcolormesh(_position_axis_edges(position_edges), np.linspace(-1, 1, MU_BINS + 1),
+                          np.clip(density.T, 1e-4, 1), cmap=sns.color_palette("rocket_r", as_cmap=True),
+                          norm=LogNorm(1e-4, 1), shading="flat", rasterized=True)
+    ax.set_xscale("log")
+    ax.xaxis.set_major_formatter(style.aes.COMPACT_NUMBER_FORMATTER)
+    ax.axvline(style.TOKEN_REFERENCE, color=style.ASSIGNMENT_REFERENCE_COLOR, linestyle=":", linewidth=1.2)
+    ax.set_yticks([-1, 0, 1])
+    ax.tick_params(labelsize=6)
+    return image
+
+
+def _finish_density_grid(fig, grid, image, axes_rows, models, name):
+    for row, (model, axes) in enumerate(zip(models, axes_rows)):
+        for col, ax in enumerate(axes):
+            ax.tick_params(labelleft=col == 0)
             if col == 0:
-                ax.set_ylabel(f"{style.SERIES_LABELS[model]}\nμ", fontsize=7)
-            if row == len(runs) - 1 and col == 0:
+                ax.set_ylabel(f"{style.SERIES_LABELS[model]}\n\u03bc", fontsize=7)
+            if row == len(models) - 1 and col == 0:
                 ax.set_xlabel("Token position (log scale)", fontsize=7)
-    cax = fig.add_subplot(grid[:, -1])
-    fig.colorbar(image, cax=cax, label="fraction of tokens")
-    fig.suptitle(f"{style.DATASET_LABEL[dataset]}: per-token eigenvalue μ = α(1−β) by position",
-                 x=0.08, ha="left", fontsize=9, fontweight="bold")
-    style.save(fig, f"gate_spectrum_heatmaps_{dataset}")
+    if image is not None:
+        cbar = fig.colorbar(image, cax=fig.add_subplot(grid[:, -1]))
+        cbar.set_label("fraction of tokens at each position", fontsize=7)
+        cbar.ax.tick_params(labelsize=6)
+    style.save(fig, name)
     plt.close(fig)
+
+
+def gate_spectrum_heatmaps(dataset="periodic", k=3):
+    """Per-token mu = alpha * (1 - beta) by position for each model's memory head and k role heads."""
+    runs = [(m, _baseline(m, dataset)) for m in SPECTRUM_MODELS]
+    runs = [(m, r) for m, r in runs if r is not None]
+    fig, grid = _density_grid(len(runs), k + 1,
+                              f"{style.DATASET_LABEL[dataset]}: per-token eigenvalue \u03bc = \u03b1(1\u2212\u03b2) "
+                              "in selected heads")
+    image, axes_rows = None, []
+    for row, (_model, run) in enumerate(runs):
+        hist = _mu_hist(run)
+        axes = []
+        for col, (li, _layer, head, title) in enumerate(selected_heads(run, k)):
+            ax = fig.add_subplot(grid[row, col])
+            image = _draw_density(ax, hist[li, head], run.gates["hist_position_edges"])
+            ax.set_title(title, fontsize=6, fontweight="regular")
+            axes.append(ax)
+        axes_rows.append(axes)
+    _finish_density_grid(fig, grid, image, axes_rows, [m for m, _ in runs], f"gate_spectrum_heatmaps_{dataset}")
+
+
+def gate_spectrum_by_layer(dataset="periodic"):
+    """mu density by position, pooled over the heads of each layer."""
+    runs = [(m, _baseline(m, dataset)) for m in SPECTRUM_MODELS]
+    runs = [(m, r) for m, r in runs if r is not None]
+    n_layers = max(len(r.meta["layer_types"]) for _, r in runs)
+    fig, grid = _density_grid(len(runs), n_layers,
+                              f"{style.DATASET_LABEL[dataset]}: per-token \u03bc by layer (all heads pooled)",
+                              panel_height_in=1.0)
+    image, axes_rows = None, []
+    for row, (_model, run) in enumerate(runs):
+        hist = _mu_hist(run)
+        gdn_layers = list(run.gates["layers"])
+        axes = []
+        for layer in range(n_layers):
+            ax = fig.add_subplot(grid[row, layer])
+            axes.append(ax)
+            if layer in gdn_layers:
+                image = _draw_density(ax, hist[gdn_layers.index(layer)].sum(axis=0), run.gates["hist_position_edges"])
+            else:
+                ax.set_ylim(-1, 1)
+                ax.set_yticks([-1, 0, 1])
+                ax.set_xticks([])
+                for spine in ("bottom", "left"):
+                    ax.spines[spine].set_visible(False)
+                ax.tick_params(left=False)
+                ax.text(0.5, 0.5, "attention\nlayer", transform=ax.transAxes, ha="center", va="center",
+                        fontsize=6, color="0.5")
+            if row == 0:
+                ax.set_title(f"layer {layer}", fontsize=7, fontweight="regular")
+        axes_rows.append(axes)
+    _finish_density_grid(fig, grid, image, axes_rows, [m for m, _ in runs], f"gate_spectrum_by_layer_{dataset}")
+
+
+def gate_spectrum_by_head(dataset="periodic"):
+    """mu density by position, pooled over layers for each head index.
+
+    Head k in one layer is unrelated to head k in another, so this pools
+    unrelated heads: an overview, not a per-mechanism view.
+    """
+    runs = [(m, _baseline(m, dataset)) for m in SPECTRUM_MODELS]
+    runs = [(m, r) for m, r in runs if r is not None]
+    n_heads = max(r.gates["hist_mu"].shape[1] for _, r in runs)
+    fig, grid = _density_grid(len(runs), n_heads,
+                              f"{style.DATASET_LABEL[dataset]}: per-token \u03bc by head index (all GDN layers "
+                              "pooled; head k is unrelated across layers)",
+                              panel_height_in=1.0)
+    image, axes_rows = None, []
+    for row, (_model, run) in enumerate(runs):
+        hist = _mu_hist(run)
+        axes = []
+        for head in range(n_heads):
+            ax = fig.add_subplot(grid[row, head])
+            image = _draw_density(ax, hist[:, head].sum(axis=0), run.gates["hist_position_edges"])
+            if row == 0:
+                ax.set_title(f"head {head}", fontsize=7, fontweight="regular")
+            axes.append(ax)
+        axes_rows.append(axes)
+    _finish_density_grid(fig, grid, image, axes_rows, [m for m, _ in runs], f"gate_spectrum_by_head_{dataset}")
 
 
 def _head_curves(run, heads, roles):
@@ -692,6 +821,8 @@ FIGURES = {
     "accuracy-by-variables": lambda: [accuracy_by_variables(d) for d in ("periodic", "solvable")],
     "precision": precision,
     "gate-heatmaps": lambda: [gate_spectrum_heatmaps(d) for d in ("periodic", "solvable")],
+    "gate-by-layer": lambda: [gate_spectrum_by_layer(d) for d in ("periodic", "solvable")],
+    "gate-by-head": lambda: [gate_spectrum_by_head(d) for d in ("periodic", "solvable")],
     "gate-summaries": lambda: [gate_summaries(d) for d in ("periodic", "solvable")],
     "readout": readout_by_position,
     "dissociation": lambda: [dissociation(d) for d in ("periodic", "solvable")],
