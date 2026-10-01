@@ -51,10 +51,15 @@ Soluble shows the same pattern. For example, GDN± at > 16K assignments: none 0.
 | Hybrid±: zero top-4 reflection heads | 0.98 | 0.98 | 0.63 | 0.41 | 0.35 |
 | Hybrid±: zero both attention layers | 0.98 | 0.99 | 0.62 | 0.39 | 0.35 |
 
-- **GDN± carries its state in one head.** Zeroing L1 H6 (the head the retention analysis identified) collapses readout to near chance even in-distribution. Zeroing four heavily reflecting heads, or a control head, does nothing.
+- **GDN±'s memory head L1 H6 is necessary.** Zeroing it collapses readout to near chance even in-distribution. Zeroing four heavily reflecting heads, or a control head, does nothing. This shows necessity, not that the state lives *only* there:
+  - L1 H6 is early, so later layers may store state but need its output;
+  - the control (L8 H2) isn't layer-matched;
+  - zeroing is a large off-distribution shift.
+
+  Stronger tests: ablate each layer-1 head one at a time, mean-ablate instead of zeroing, and probe register values from L1 H6's state.
 - **Hybrid± carries it redundantly.** No single head, set of reflection heads, or even both attention layers is necessary. That is consistent with its memory-head retention not tracking accuracy across checkpoints (note 05).
 
-**What this means for the eigenvalue hypothesis.** For GDN± the state flows through one head, whose write retention tracks extrapolation across models and checkpoints. Yet none of the following affects the length horizon:
+**What this means for the eigenvalue hypothesis.** For GDN±, one head (L1 H6) is necessary and has by far the longest write retention, which tracks extrapolation across models and checkpoints. Yet none of the following affects the length horizon:
 - position-dependent drift of the spectrum (it's stationary, per role, to three decimals);
 - precision (fp32 = bf16);
 - rounding near ±1;
@@ -62,6 +67,6 @@ Soluble shows the same pattern. For example, GDN± at > 16K assignments: none 0.
 - doubling its memory timescale;
 - the hybrid's attention.
 
-What remains is interference inside the memory head: many values carried through one 128-dimensional key space for thousands of steps. That fits the horizon shrinking with the number of variables (note 01). Testing it directly (e.g. key overlap between registers in L1 H6, or state rank over time) is the natural next step.
+A leading remaining candidate is interference in that head's state: many values carried through one 128-dimensional key space for thousands of steps. This is conditional on L1 H6 actually being where the state is stored, which the ablation alone doesn't establish. That fits the horizon shrinking with the number of variables (note 01). Testing it directly (e.g. key overlap between registers in L1 H6, or state rank over time) is the natural next step.
 
 **Caveat on retention under a snap.** After snapping, the retention probe isn't comparable to baseline: many tokens tie at β = 2, which changes which token counts as a block's "strongest write". Compare snapped runs by accuracy, not retention.
