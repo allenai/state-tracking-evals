@@ -153,12 +153,15 @@ def main() -> None:
     parser.add_argument("--cluster", nargs="+", default=list(CLUSTERS))
     parser.add_argument("--priority", default=PRIORITY)
     parser.add_argument("--only", nargs="*", default=None, help="Launch only jobs whose name contains one of these")
+    parser.add_argument("--names", nargs="*", default=None, help="Launch only jobs with exactly these names")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     jobs = [job for name in args.suite for job in suite(name)]
     if args.only:
         jobs = [job for job in jobs if any(fragment in job.name for fragment in args.only)]
+    if args.names:
+        jobs = [job for job in jobs if job.name in set(args.names)]
     for job in jobs:
         command = gantry_command(job, clusters=args.cluster, priority=args.priority)
         if args.dry_run:
