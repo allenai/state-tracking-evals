@@ -307,57 +307,29 @@ def readout_by_position():
     plt.close(fig)
 
 
-def _dissociation_table(run):
-    import statsmodels.formula.api as smf
-
-    df = run.readout.copy()
-    df = df[df["num_variables"] > 2]
-    df["log_position"] = np.log2(df["assignments_so_far"])
-    df["log_age"] = np.log2(1 + df["age"])
-    df["log_hops"] = np.log2(1 + df["hops"])
-    df["y"] = df["correct_present_values"].astype(int)
-    if df["y"].nunique() < 2:
-        return None
-    import statsmodels.api as sm
-
-    formula = "y ~ log_position + log_age + log_hops"
-    if df["num_variables"].nunique() > 1:
-        formula += " + C(num_variables)"
-    model = smf.glm(formula, data=df, family=sm.families.Binomial())
-    # Checkpoints within one sample are correlated; cluster by sample when there are enough.
-    if df["sample"].nunique() >= 3:
-        fit = model.fit(cov_type="cluster", cov_kwds={"groups": pd.factorize(df["sample"])[0]})
-    else:
-        fit = model.fit(cov_type="HC0")
-    rows = []
-    for term in ("log_position", "log_age", "log_hops"):
-        low, high = fit.conf_int().loc[term]
-        rows.append({"term": term, "coef": fit.params[term], "low": low, "high": high})
-    return pd.DataFrame(rows)
-
-
 def dissociation(dataset="periodic"):
-    """What predicts a readout error: absolute position, value age, or reference hops?
+    """Readout accuracy by position (x) and value age (y), per model.
 
-    Left: accuracy by position (x) and value age (y). Right: per-doubling
-    log-odds effects from a binomial GLM with all three covariates (plus the
-    variable count), clustered by sample.
+    Separating "errors grow with absolute position" from "errors grow with how
+    long a value has been carried" needs values of every age at every
+    position; mass concentrated on the diagonal means this data cannot tell
+    them apart.
     """
     import seaborn as sns
 
-    series = [(m, _baseline(m, dataset)) for m in PM_SERIES]
+    series = [(m, _baseline(m, dataset)) for m in GDN_SERIES]
     series = [(m, r) for m, r in series if r is not None]
     width = style.SUMMARY_FIG_WIDTH_IN
-    fig = plt.figure(figsize=(width, 2.1))
-    grid = fig.add_gridspec(1, len(series) + 2, width_ratios=[1] * len(series) + [0.05, 1.1], left=0.08,
-                            right=0.98, top=0.82, bottom=0.2, wspace=0.35)
+    fig = plt.figure(figsize=(width, 2.2))
+    grid = fig.add_gridspec(1, len(series) + 1, width_ratios=[1] * len(series) + [0.05], left=0.07, right=0.93,
+                            top=0.8, bottom=0.2, wspace=0.18)
     cmap = sns.color_palette("rocket", as_cmap=True)
     image = None
     for i, (model, run) in enumerate(series):
         df = run.readout
         df = df[df["num_variables"] > 2]
-        pos_index, pos_mid, pos_edges = style.power_of_two_bins(df["assignments_so_far"], lo=4)
-        age_index, age_mid, age_edges = style.power_of_two_bins(df["age"] + 1, lo=1)
+        pos_index, _, pos_edges = style.power_of_two_bins(df["assignments_so_far"], lo=4)
+        age_index, _, age_edges = style.power_of_two_bins(df["age"] + 1, lo=1)
         table = np.full((len(age_edges) - 1, len(pos_edges) - 1), np.nan)
         grouped = df.assign(p=pos_index, a=age_index).groupby(["a", "p"])["correct_present_values"].agg(["mean", "size"])
         for (a, p), (mean, size) in grouped.iterrows():
@@ -369,75 +341,97 @@ def dissociation(dataset="periodic"):
         ax.set_yscale("log")
         ax.xaxis.set_major_formatter(style.aes.COMPACT_NUMBER_FORMATTER)
         ax.yaxis.set_major_formatter(style.aes.COMPACT_NUMBER_FORMATTER)
-        ax.plot([1, pos_edges[-1]], [1, pos_edges[-1]], color="white", linewidth=0.8, linestyle="--")
+        ax.plot([1, pos_edges[-1]], [1, pos_edges[-1]], color="0.5", linewidth=0.8, linestyle="--")
+        ax.tick_params(labelleft=i == 0, labelsize=6)
         style.panel_title(ax, style.SERIES_LABELS[model])
-        ax.set_xlabel("Assignments so far")
+        ax.set_xlabel("Assignments so far" if i == 0 else None, fontsize=7)
         if i == 0:
-            ax.set_ylabel("Value age (assignments)")
+            ax.set_ylabel("Value age (assignments)", fontsize=7)
     if image is not None:
-        fig.colorbar(image, cax=fig.add_subplot(grid[0, len(series)]), label="Readout accuracy")
-    ax = fig.add_subplot(grid[0, -1])
-    labels = {"log_position": "position", "log_age": "value age", "log_hops": "ref. hops"}
-    for j, (model, run) in enumerate(series):
-        table = _dissociation_table(run)
-        if table is None:
-            continue
-        y = np.arange(len(table)) + (j - (len(series) - 1) / 2) * 0.25
-        ax.errorbar(table["coef"], y, xerr=[table["coef"] - table["low"], table["high"] - table["coef"]],
-                    fmt=style.SERIES_MARKERS[model], color=style.SERIES_COLORS[model], ms=3.5, elinewidth=0.8,
-                    capsize=1.5)
-        ax.set_yticks(np.arange(len(table)), [labels[t] for t in table["term"]])
-    ax.axvline(0, color="0.5", linewidth=0.8)
-    ax.grid(alpha=0.2, axis="x")
-    style.panel_title(ax, "log-odds per doubling")
-    fig.suptitle(f"{style.DATASET_LABEL[dataset]}: what predicts a readout error?", x=0.08, ha="left",
+        cbar = fig.colorbar(image, cax=fig.add_subplot(grid[0, -1]))
+        cbar.set_label("Readout accuracy", fontsize=7)
+        cbar.ax.tick_params(labelsize=6)
+    fig.suptitle(f"{style.DATASET_LABEL[dataset]}: readout accuracy by position and value age", x=0.07, ha="left",
                  fontsize=9, fontweight="bold")
     style.save(fig, f"dissociation_{dataset}")
     plt.close(fig)
 
 
-def retention(dataset="periodic", k=4):
-    """Surviving norm of a write direction vs lag, by the write's position."""
+def _retention(run):
+    """Mean log retention (L, probe, H, start bin, lag bin), counts (L, probe, start, lag), and axes."""
+    loaded = run.load_all("retention.npz")
+    if not loaded:
+        return None
+    n_pos = max(r["log_norm_sum"].shape[3] for r in loaded)
+    sums = sum(_pad(r["log_norm_sum"], 3, n_pos) for r in loaded)
+    counts = sum(_pad(r["count"], 2, n_pos) for r in loaded)
+    mean = sums / np.maximum(counts[:, :, None], 1)
+    return {
+        "mean": mean,
+        "counts": counts,
+        "lag_tokens": loaded[0]["lag_edges_blocks"][:-1] * int(loaded[0]["block"]),
+        "edges": max(loaded, key=lambda r: len(r["position_edges"]))["position_edges"],
+        "layers": loaded[0]["layers"],
+    }
+
+
+def persistent_heads(run, k=1, lag=1024):
+    """Heads whose strongest writes survive best at ``lag`` tokens (start positions pooled)."""
+    ret = _retention(run)
+    j = int(np.searchsorted(ret["lag_tokens"], lag))
+    sums = (ret["mean"][:, 0, :, :, j] * ret["counts"][:, 0, None, :, j]).sum(-1)
+    pooled = sums / np.maximum(ret["counts"][:, 0, :, j].sum(-1), 1)[:, None]  # (L, H)
+    order = np.dstack(np.unravel_index(np.argsort(-pooled, axis=None), pooled.shape))[0][:k]
+    return [(int(li), int(ret["layers"][li]), int(h), float(np.exp(pooled[li, h]))) for li, h in order]
+
+
+def retention(dataset="periodic"):
+    """How much of a write survives the transitions after it, by lag and by the write's position.
+
+    Each panel shows the model's most persistent head (best write retention at
+    a 1K-token lag), one line per write position; overlapping lines mean the
+    dynamics are the same wherever the write happens. Dashed: median over all
+    heads, positions pooled.
+    """
     import seaborn as sns
 
     series = [(m, _baseline(m, dataset)) for m in GDN_SERIES]
-    series = [(m, r) for m, r in series if r is not None]
+    series = [(m, r) for m, r in series if r is not None and r.load_all("retention.npz")]
+    handles = style.reference_handles(extrapolation=False) + [
+        plt.Line2D([0], [0], color="0.4", linestyle="--", linewidth=1.1, label="median head")]
     fig, grid = style.row_figure(
-        len(series), style.reference_handles(extrapolation=False), height_in=1.9,
-        title=f"{style.DATASET_LABEL[dataset]}: retention of the strongest write per block (top-{k} heads)")
-    palette = None
+        len(series), handles, height_in=1.9,
+        title=f"{style.DATASET_LABEL[dataset]}: retention of writes in each model's most persistent head")
     for i, (model, run) in enumerate(series):
-        loaded = run.load_all("retention.npz")
-        if not loaded:
-            continue
-        n_pos = max(r["log_norm_sum"].shape[3] for r in loaded)
-        sums = sum(_pad(r["log_norm_sum"], 3, n_pos) for r in loaded)  # (L, P, H, pos, lag)
-        counts = sum(_pad(r["count"], 2, n_pos) for r in loaded)  # (L, P, pos, lag)
-        block = int(loaded[0]["block"])
-        lag_tokens = loaded[0]["lag_edges_blocks"][:-1] * block
-        edges = max(loaded, key=lambda r: len(r["position_edges"]))["position_edges"]
-        heads = reflection_heads(run, k)
-        mean = np.stack([sums[li, 0, h] for li, _, h, _ in heads]).sum(0) / np.maximum(counts[heads[0][0], 0], 1) / len(heads)
-        present = counts[heads[0][0], 0] > 0
-        rows = [p for p in range(n_pos) if present[p].sum() >= 2]
+        ret = _retention(run)
+        li, layer, head, _ = persistent_heads(run)[0]
+        counts = ret["counts"][li, 0]  # (start, lag)
+        rows = [p for p in range(counts.shape[0]) if (counts[p] > 0).sum() >= 3]
         palette = sns.color_palette("mako_r", n_colors=len(rows) + 2)[2:]
-        ax = fig.add_subplot(grid[0, i])
+        ax = fig.add_subplot(grid[0, i], sharey=None)
         for color, p in zip(palette, rows):
-            ok = present[p]
-            ax.plot(lag_tokens[ok], np.exp(mean[p][ok]), color=color, lw=1.1, marker="o", ms=2,
-                    label=style.aes.format_compact_number(edges[p]))
+            ok = counts[p] > 0
+            ax.plot(ret["lag_tokens"][ok], np.exp(ret["mean"][li, 0, head, p][ok]), color=color, lw=1.1,
+                    marker="o", ms=2, label=style.aes.format_compact_number(ret["edges"][p]))
+        pooled_counts = ret["counts"][:, 0].sum(1)  # (L, lag)
+        pooled = (ret["mean"][:, 0] * ret["counts"][:, 0, None]).sum(2) / np.maximum(pooled_counts[:, None], 1)
+        median = np.exp(np.median(pooled.reshape(-1, pooled.shape[-1]), axis=0))
+        ok = pooled_counts.sum(0) > 0
+        ax.plot(ret["lag_tokens"][ok], median[ok], color="0.4", linestyle="--", lw=1.1)
         ax.set_xscale("log")
         ax.set_yscale("log")
-        ax.set_ylim(1e-6, 2)
+        ax.set_ylim(1e-3, 1.5)
         ax.xaxis.set_major_formatter(style.aes.COMPACT_NUMBER_FORMATTER)
         ax.axvline(style.TOKEN_REFERENCE, color=style.ASSIGNMENT_REFERENCE_COLOR, linestyle=":", linewidth=1.4)
         ax.grid(alpha=0.2)
-        style.panel_title(ax, style.SERIES_LABELS[model])
+        style.panel_title(ax, f"{style.SERIES_LABELS[model]} \u2014 L{layer} H{head}")
         ax.set_xlabel("Lag (tokens)" if i == 0 else None)
+        ax.tick_params(labelleft=i == 0)
         if i == 0:
-            ax.set_ylabel("‖Φ k‖ (write retained)")
-        if i == len(series) - 1:
-            ax.legend(title="write at token", fontsize=5.5, title_fontsize=6, frameon=False, loc="lower left")
+            ax.set_ylabel("\u2016\u03a6 k\u2016 (write retained)")
+        if i == 0:
+            ax.legend(title="write at token", fontsize=5.5, title_fontsize=6, frameon=False, loc="lower left",
+                      ncol=2)
     style.save(fig, f"retention_{dataset}")
     plt.close(fig)
 
