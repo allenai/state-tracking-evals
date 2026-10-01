@@ -119,7 +119,9 @@ def suite(name: str) -> list[Job]:
             )
         ]
     if name == "training-steps":
-        steps = {"gdn-full": (3695, 4106, 7800), "hybrid": (3627, 4030, 7656)}
+        # Converted intermediate checkpoints on weka (spectra/convert.py): the two
+        # pre-/post-decay pairs of the WSDS schedule plus one extra mid-run save.
+        steps = {"gdn-full": (3695, 4106, 7000, 7800), "hybrid": (3627, 4030, 7656, 8000)}
         return [run_job(m, "periodic", "periodic", step=s) for m in PM_MODELS for s in steps[m]]
     raise ValueError(f"unknown suite {name!r}")
 
