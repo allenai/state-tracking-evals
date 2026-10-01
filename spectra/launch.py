@@ -104,13 +104,28 @@ def suite(name: str) -> list[Job]:
         ]
         jobs += [run_job("hybrid", t, e, intervention={"attn_window": 4096}, tag="attnwindow") for t, e in MATCHED[:2]]
         return jobs
+    if name == "interventions-targeted":
+        # Snap the memory head's inexact reflections (value tokens sit near beta ~ 1.89),
+        # which the beta > 1.98 snap above never touches. Memory heads are the most
+        # persistent heads in the baseline retention (figures.persistent_heads).
+        memory_heads = {"gdn-full": [[1, 6]], "hybrid": [[5, 1]]}
+        return [
+            job
+            for m in PM_MODELS
+            for job in (
+                run_job(m, "periodic", "periodic", intervention={"snap_reflect": 0.25, "heads": memory_heads[m]},
+                        tag="snapreflect25-memhead"),
+                run_job(m, "periodic", "periodic", intervention={"snap_reflect": 0.25}, tag="snapreflect25"),
+            )
+        ]
     if name == "training-steps":
         steps = {"gdn-full": (3695, 4106, 7800), "hybrid": (3627, 4030, 7656)}
         return [run_job(m, "periodic", "periodic", step=s) for m in PM_MODELS for s in steps[m]]
     raise ValueError(f"unknown suite {name!r}")
 
 
-SUITES = ("pilot", "metadata", "metadata-solvable", "baseline", "precision", "interventions", "training-steps")
+SUITES = ("pilot", "metadata", "metadata-solvable", "baseline", "precision", "interventions",
+          "interventions-targeted", "training-steps")
 
 
 def gantry_command(job: Job, *, clusters: list[str], priority: str) -> list[str]:
