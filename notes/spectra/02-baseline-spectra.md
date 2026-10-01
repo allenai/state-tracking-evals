@@ -14,7 +14,7 @@ Runs: one per model (GDN±, Hybrid±, GDN+, Hybrid+) × matched train/eval data,
 
 **3. Accuracy within a sequence reproduces the eval decay** (`readout_by_position.pdf`). We teacher-force the gold answer at 24 checkpoints inside each long prompt (placed between swaps). General-finite accuracy drops at 2–5K assignments for the ± models and right after the training cutoff for the + models, the same pattern as the paper's DT figure.
 
-**4. Write retention in each model's memory head predicts the failure point.** The memory head is defined as the head whose strongest write per 64-token block survives best under its later transitions, at a 1K-token lag. It's the framed panel in the every-head figures. See `retention_periodic.pdf`; the table gives the fraction of a write that survives the transitions after it:
+**4. Write retention in each model's memory head predicts the failure point.** The memory head is defined as the head whose strongest write per 64-token block survives best under its later transitions, at a 1K-token lag. See `retention_periodic.pdf`; the table gives the fraction of a write that survives the transitions after it:
 
 | general finite | memory head | retained at 1K / 4K / 16K tokens | readout < 90% at |
 |---|---|---|---|
