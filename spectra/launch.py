@@ -118,6 +118,21 @@ def suite(name: str) -> list[Job]:
                 run_job(m, "periodic", "periodic", intervention={"snap_reflect": 0.25}, tag="snapreflect25"),
             )
         ]
+    if name == "ablations":
+        # Heads from the baseline general-finite runs: memory = most persistent
+        # (figures.persistent_heads), reflection = top-4 by in-distribution mass at
+        # mu < -0.5 (figures.reflection_heads), control = neither (L8 H2 in both).
+        heads = {
+            "gdn-full": {"memory": [[1, 6]], "reflection": [[3, 1], [6, 7], [2, 5], [8, 1]], "control": [[8, 2]]},
+            "hybrid": {"memory": [[5, 1]], "reflection": [[3, 4], [2, 5], [3, 0], [1, 7]], "control": [[8, 2]]},
+        }
+        jobs = [
+            run_job(m, "periodic", "periodic", intervention={"ablate_heads": chosen}, tag=f"ablate-{kind}")
+            for m in PM_MODELS for kind, chosen in heads[m].items()
+        ]
+        jobs.append(run_job("hybrid", "periodic", "periodic", intervention={"ablate_attention": [4, 9]},
+                            tag="ablate-attention"))
+        return jobs
     if name == "training-steps":
         # Converted intermediate checkpoints on weka (spectra/convert.py): the two
         # pre-/post-decay pairs of the WSDS schedule plus one extra mid-run save.
@@ -127,7 +142,7 @@ def suite(name: str) -> list[Job]:
 
 
 SUITES = ("pilot", "metadata", "metadata-solvable", "baseline", "precision", "interventions",
-          "interventions-targeted", "training-steps")
+          "interventions-targeted", "ablations", "training-steps")
 
 
 def gantry_command(job: Job, *, clusters: list[str], priority: str) -> list[str]:

@@ -290,7 +290,7 @@ def score_choices(model, cache, tokenizer, choices: list[str], device: torch.dev
 
 
 def run_sample(model, tokenizer, row: dict, args, device: torch.device, readout: Readout,
-               intervention: capture.Intervention, out_dir: Path) -> dict:
+               recorder: capture.GateRecorder, out_dir: Path) -> dict:
     prefix = row["prefix"]
     program = replay.parse_program(prefix)
     encoded = tokenizer(prefix, add_special_tokens=False, return_offsets_mapping=True)
@@ -307,7 +307,7 @@ def run_sample(model, tokenizer, row: dict, args, device: torch.device, readout:
     hist_edges = position_edges[::2] if len(position_edges) > 6 else position_edges
     if hist_edges[-1] != position_edges[-1]:
         hist_edges = np.append(hist_edges, position_edges[-1])
-    recorder = capture.GateRecorder(model, intervention)
+    intervention = recorder.intervention
     stats = capture.BinnedGateStats(layout.roles, position_edges=position_edges, hist_position_edges=hist_edges,
                                     n_heads=n_heads, device=device)
     window_starts = sorted({min(s, max(n_tokens - args.window, 0)) for s in (0, 1024, 4096, 16384, 65536, 200_000)
@@ -452,8 +452,9 @@ def main(argv=None) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     path = args.model_path or checkpoint_path(args.model_type, args.training, args.step)
     intervention = capture.Intervention(**args.intervention)
-    if intervention.heads is not None:
-        intervention.heads = [tuple(h) for h in intervention.heads]
+    for key in ("heads", "ablate_heads"):
+        if getattr(intervention, key) is not None:
+            setattr(intervention, key, [tuple(h) for h in getattr(intervention, key)])
     name = args.name or "__".join([
         args.model_type, args.training, args.eval_class, args.dtype, path.name, intervention.name(),
     ]).replace("=", "-").replace(",", "_")
@@ -487,8 +488,12 @@ def main(argv=None) -> None:
         "validation": validation,
         "samples": [],
     }
+    # Wrap the kernels once per job: wrapping per sample would stack wrappers and
+    # apply non-idempotent interventions (alpha_power) once per earlier sample.
+    recorder = capture.GateRecorder(model, intervention)
+    recorder.ablate_attention(model)
     for row in rows:
-        meta = run_sample(model, tokenizer, row, args, device, readout, intervention, out_dir)
+        meta = run_sample(model, tokenizer, row, args, device, readout, recorder, out_dir)
         run_meta["samples"].append(meta)
         (out_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
         torch.cuda.empty_cache()

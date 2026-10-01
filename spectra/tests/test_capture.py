@@ -205,3 +205,43 @@ def test_intervention_changes_outputs_only_when_active():
     with torch.inference_mode():
         changed = model2(input_ids=ids).logits
     assert not torch.allclose(base, changed)
+
+
+def test_recorder_refuses_to_wrap_twice():
+    model = tiny_model(["linear_attention", "linear_attention"])
+    capture.GateRecorder(model)
+    with pytest.raises(RuntimeError, match="already wrapped"):
+        capture.GateRecorder(model)
+
+
+def test_head_ablation_zeroes_only_that_head():
+    model = tiny_model(["linear_attention", "linear_attention"])
+    recorder = capture.GateRecorder(model, capture.Intervention(ablate_heads=[(0, 1)]))
+    outputs = {}
+    module = model.model.layers[0].linear_attn
+    inner = module.chunk_gated_delta_rule
+
+    def spy(*args, **kwargs):
+        out = inner(*args, **kwargs)
+        outputs["o"] = out[0]
+        return out
+
+    module.chunk_gated_delta_rule = spy
+    ids = torch.randint(2, 128, (1, 80))
+    with torch.inference_mode():
+        model(input_ids=ids)
+    assert torch.count_nonzero(outputs["o"][:, :, 1]) == 0
+    assert torch.count_nonzero(outputs["o"][:, :, 0]) > 0
+    assert recorder.intervention.name() == "ablate_heads=0-1"
+
+
+def test_attention_ablation_changes_outputs():
+    base = tiny_model(["linear_attention", "full_attention"])
+    ids = torch.randint(2, 128, (1, 70))
+    with torch.inference_mode():
+        reference = base(input_ids=ids).logits
+    ablated = tiny_model(["linear_attention", "full_attention"])
+    capture.GateRecorder(ablated, capture.Intervention(ablate_attention=[1])).ablate_attention(ablated)
+    with torch.inference_mode():
+        changed = ablated(input_ids=ids).logits
+    assert not torch.allclose(reference, changed)

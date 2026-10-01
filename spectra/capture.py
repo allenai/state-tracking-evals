@@ -82,6 +82,10 @@ class Intervention:
     # Hybrid only: keep only the last ``attn_window`` tokens in each attention layer's KV cache.
     attn_window: int | None = None
     heads: list[tuple[int, int]] | None = None
+    # Zero these GDN heads' kernel outputs, as (layer, head). Their state still updates.
+    ablate_heads: list[tuple[int, int]] | None = None
+    # Hybrid only: zero these attention layers' outputs (decoder layer indices).
+    ablate_attention: list[int] | None = None
 
     @property
     def rewrites_gates(self) -> bool:
@@ -89,14 +93,19 @@ class Intervention:
 
     @property
     def is_null(self) -> bool:
-        return not self.rewrites_gates and self.attn_window is None
+        return (not self.rewrites_gates and self.attn_window is None and not self.ablate_heads
+                and not self.ablate_attention)
 
     def name(self) -> str:
         if self.is_null:
             return "none"
-        parts = [f"{k}={v}" for k, v in asdict(self).items() if k != "heads" and v not in (0.0, 1.0, None)]
-        if self.heads is not None:
-            parts.append(f"heads={len(self.heads)}")
+        lists = ("heads", "ablate_heads", "ablate_attention")
+        parts = [f"{k}={v}" for k, v in asdict(self).items() if k not in lists and v not in (0.0, 1.0, None)]
+        for key in lists:
+            value = getattr(self, key)
+            if value:
+                parts.append(f"{key}=" + "+".join("-".join(map(str, v)) if isinstance(v, (list, tuple)) else str(v)
+                                                 for v in value))
         return ",".join(parts)
 
     def head_mask(self, layer: int, n_heads: int, device: torch.device) -> torch.Tensor | None:
@@ -172,7 +181,10 @@ class GateRecorder:
         self.recording = False
         self.offset = 0
         self.layers = gdn_layers(model)
+        if any(getattr(module, "_spectra_wrapped", False) for _, module in self.layers):
+            raise RuntimeError("model kernels are already wrapped; reuse the existing GateRecorder")
         for layer_index, module in self.layers:
+            module._spectra_wrapped = True
             module.chunk_gated_delta_rule = self._wrap(layer_index, module.chunk_gated_delta_rule)
             module.recurrent_gated_delta_rule = self._wrap(layer_index, module.recurrent_gated_delta_rule)
 
@@ -185,9 +197,20 @@ class GateRecorder:
                 segment = Segment(layer_index, self.offset, k[0], g[0].float(), beta[0])
                 for sink in self.sinks:
                     sink.observe(segment)
-            return kernel(q, k, v, *args, g=g, beta=beta, **kwargs)
+            output, state = kernel(q, k, v, *args, g=g, beta=beta, **kwargs)
+            ablated = [head for layer, head in self.intervention.ablate_heads or () if layer == layer_index]
+            if ablated:
+                output = output.clone()
+                output[:, :, ablated] = 0
+            return output, state
 
         return wrapped
+
+    def ablate_attention(self, model: Any) -> None:
+        """Zero the outputs of the intervention's attention layers (forward hooks)."""
+        for layer_index in self.intervention.ablate_attention or ():
+            attention = model.model.layers[layer_index].self_attn
+            attention.register_forward_hook(lambda _m, _a, out: (torch.zeros_like(out[0]), *out[1:]))
 
 
 # --------------------------------------------------------------------------------------
