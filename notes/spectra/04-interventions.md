@@ -26,7 +26,7 @@ Soluble shows the same pattern. For example, GDN± at > 16K assignments: none 0.
 
 **Takeaways.**
 - **Making near-exact gates exact does nothing.** Snapping β > 1.98 to exactly 2, or α > 0.999 to exactly 1, moves accuracy by at most ±0.03 (and ±0.11 at > 16K on soluble). Together with fp32 matching bf16, this rules out rounding near ±1 as the bottleneck.
-- **Forgetting is load-bearing.** Halving it (α → α^0.5) breaks the models near the training length and beyond: GDN± general finite at 1K–4K goes 0.79 → 0.21, soluble 0.98 → 0.13. The models rely on the gate to clear stale state, so "less forgetting" isn't a fix.
+- **~~Forgetting is load-bearing.~~ Invalid, rerunning.** A bug stacked a kernel wrapper per sample, so α → α^0.5 compounded into α^(0.5^k) for the k-th sample. The α^0.5 rows above overstate the effect. The snaps, masks, attention window and fp32 are idempotent and unaffected. Corrected numbers will replace these.
 - **The hybrid's attention isn't the long-range bottleneck.** Restricting both NoPE attention layers to the last 4K tokens leaves accuracy unchanged at every length. That rules out "attention averages over an ever-longer context" as the reason Hybrid± fails at a fixed ~1.4–2.9K assignments.
 - **Making the memory head's reflections exact doesn't help either.** The retention analysis pointed at GDN±'s memory head (L1 H6), whose value-token reflections sit at β ≈ 1.89 (|μ| ≈ 0.89, never exact). Snapping β > 1.75 → 2, in that head alone or in all heads, makes 100% of those reflections exact (the leak per reflection goes from 0.114 to 0.001) and leaves accuracy unchanged at every length:
 
