@@ -714,6 +714,51 @@ def intervention_variants(model):
     return variants
 
 
+ABLATION_HEADS = {  # spectra/launch.py "ablations"
+    "gdn-full": {"memory": [[1, 6]], "reflection": [[3, 1], [6, 7], [2, 5], [8, 1]], "control": [[8, 2]]},
+    "hybrid": {"memory": [[5, 1]], "reflection": [[3, 4], [2, 5], [3, 0], [1, 7]], "control": [[8, 2]]},
+}
+
+
+def ablations(dataset="periodic"):
+    """Readout accuracy vs position with heads (or the hybrid's attention) zeroed."""
+    import seaborn as sns
+
+    from spectra import outputs
+
+    labels = ["none", "zero memory head", "zero 4 reflection heads", "zero control head", "zero attention (hybrid)"]
+    colors = dict(zip(labels[1:], sns.color_palette("colorblind", n_colors=len(labels) - 1)))
+    colors["none"] = (0.1, 0.1, 0.1)
+    handles = [plt.Line2D([0], [0], color=colors[label], lw=2.0 if label == "none" else 1.2, label=label)
+               for label in labels] + style.reference_handles()
+    fig, grid = style.row_figure(len(PM_SERIES), handles, width_in=style.aes.ICLR_PAPER_WIDTH_IN,
+                                 title=f"{style.DATASET_LABEL[dataset]}: ablations")
+    for i, model in enumerate(PM_SERIES):
+        ax = fig.add_subplot(grid[0, i])
+        variants = [("none", {})] + [
+            (f"zero {name}", {"intervention": {"ablate_heads": ABLATION_HEADS[model][kind]}})
+            for kind, name in (("memory", "memory head"), ("reflection", "4 reflection heads"),
+                               ("control", "control head"))
+        ]
+        if model == "hybrid":
+            variants.append(("zero attention (hybrid)", {"intervention": {"ablate_attention": [4, 9]}}))
+        for label, kwargs in variants:
+            run = outputs.find(model, dataset, **kwargs)
+            if run is None:
+                continue
+            curve = _readout_curve(run.readout)
+            ax.plot(curve["bin_mid"], curve["accuracy"], color=colors[label], lw=2.0 if label == "none" else 1.2,
+                    marker="o" if label == "none" else None, ms=2.5, zorder=3 if label == "none" else 2)
+        style.configure_log_axis(ax, 4, 1e5)
+        style.add_reference_lines(ax)
+        style.configure_accuracy_axis(ax, first=i == 0)
+        memory = ABLATION_HEADS[model]["memory"][0]
+        style.panel_title(ax, f"{style.SERIES_LABELS[model]} (memory head L{memory[0]} H{memory[1]})")
+        ax.set_xlabel("Assignments read so far" if i == 0 else None)
+    style.save(fig, f"ablations_{dataset}")
+    plt.close(fig)
+
+
 def interventions():
     """Readout accuracy vs position under gate interventions and fp32 inference."""
     import seaborn as sns
@@ -911,6 +956,7 @@ FIGURES = {
     "retention": lambda: [retention(d) for d in ("periodic", "solvable")],
     "statement-eigenvalues": lambda: [statement_eigenvalues(d) for d in ("solvable", "periodic")],
     "interventions": interventions,
+    "ablations": ablations,
     "drift": lambda: [hidden_drift(d) for d in ("periodic", "solvable")],
     "training-steps": training_steps,
     "retention-vs-extrapolation": retention_vs_extrapolation,
